@@ -6,10 +6,13 @@ Cortico is, and [vendor/cortico/AGENTS.md](vendor/cortico/AGENTS.md) governs eve
 Cortico itself. This file says how work in Coopanion is done. When a request conflicts with
 either, say so before building.
 
+Read vendor/cortico/PHILOSOPHY.md before starting any work here. The submodule is empty in a
+fresh clone or a new worktree until `git submodule update --init` runs.
+
 ## 1. Design stance
 
-Read vendor/cortico/PHILOSOPHY.md before changing how Coo is prompted, given tools, given memory,
-or handed context. Two of its rules settle most design questions:
+Two of PHILOSOPHY.md's rules settle most design questions about how Coo is prompted, given tools,
+given memory or handed context:
 
 - **Design toward the frontier.** A mechanism that exists only to work around a current model's
   limit is a fallback, and is written, named and documented as one.
