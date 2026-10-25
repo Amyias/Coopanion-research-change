@@ -9,6 +9,11 @@ const ptBR: Translation<CuaText> = {
     caption: 'Uso do computador',
     yes: 'Sim',
     no: 'Desta vez não',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} quer digitar na janela de terminal “${window}”:\n${text}\nO que for digitado pode ser executado como comando. Depois de um sim, digitar ou pressionar teclas em um terminal e win+r não são perguntados de novo por ${minutes} min. Pode?`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} quer pressionar ${keys} na janela de terminal “${window}”. Depois de um sim, digitar ou pressionar teclas em um terminal e win+r não são perguntados de novo por ${minutes} min. Pode?`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} quer pressionar ${keys} para abrir a caixa Executar, que pode iniciar programas ou executar comandos. Depois de um sim, digitar ou pressionar teclas em um terminal e win+r não são perguntados de novo por ${minutes} min. Pode?`,
+    },
   },
 
   preflight: {
@@ -31,8 +36,8 @@ const ptBR: Translation<CuaText> = {
     group: 'Uso do computador',
     enabled: { title: 'Ativar o uso do computador' },
     control: { title: 'Permitir o mouse e o teclado', description: 'Desligado, só capturas de tela e a lista de janelas.' },
-    permission: { title: 'Quando perguntar a você', description: 'ask-each-turn: antes de olhar a tela ou agir, a cada turno; ask-before-acting: olhar é livre, pergunta antes de usar o mouse e o teclado a cada turno; ask-once: olhar é livre, pergunta uma vez antes de usar o mouse e o teclado, e um sim vale por “Um sim dura”; never-ask: nunca pergunta.' },
-    grantMinutes: { title: 'Um sim dura', suffix: 'min', description: 'Só para ask-once.' },
+    permission: { title: 'Quando perguntar a você', description: 'ask-each-turn: antes de olhar a tela ou agir, a cada turno; ask-before-acting: olhar é livre, pergunta antes de usar o mouse e o teclado a cada turno; ask-once: olhar é livre, pergunta uma vez antes de usar o mouse e o teclado, e um sim vale por “Um sim dura”; never-ask: nunca pergunta. Em qualquer opção, antes de digitar ou pressionar teclas em um terminal e antes de win+r, pergunta uma vez à parte, e um sim vale por “Um sim dura”.' },
+    grantMinutes: { title: 'Um sim dura', suffix: 'min', description: 'Para ask-once e para a pergunta à parte sobre terminais.' },
     userIdleMs: { title: 'Não atrapalhar por', description: 'Depois que você usa o mouse ou o teclado, espera até que fiquem parados por esse tempo.' },
     maxYieldWaitMs: { title: 'Espera máxima por você' },
     maxWidth: { title: 'Largura máxima da captura' },

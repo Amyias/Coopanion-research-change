@@ -9,6 +9,11 @@ const zhHant: Translation<CuaText> = {
     caption: '電腦操作',
     yes: '可以',
     no: '這次不行',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} 想在命令列視窗「${window}」裡輸入：\n${text}\n輸入的內容可能作為命令執行。同意後 ${minutes} 分鐘內，在命令列視窗裡輸入、按鍵和按 win+r 不再詢問。可以嗎？`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} 想在命令列視窗「${window}」裡按 ${keys}。同意後 ${minutes} 分鐘內，在命令列視窗裡輸入、按鍵和按 win+r 不再詢問。可以嗎？`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} 想按 ${keys} 開啟執行視窗，執行視窗能啟動程式或執行命令。同意後 ${minutes} 分鐘內，在命令列視窗裡輸入、按鍵和按 win+r 不再詢問。可以嗎？`,
+    },
   },
 
   preflight: {
@@ -31,8 +36,8 @@ const zhHant: Translation<CuaText> = {
     group: '電腦操作',
     enabled: { title: '啟用電腦操作' },
     control: { title: '允許操作滑鼠和鍵盤', description: '關閉後只能截圖和列出視窗。' },
-    permission: { title: '詢問時機', description: 'ask-each-turn：每輪查看螢幕或操作前都詢問；ask-before-acting：查看螢幕不詢問，每輪操作滑鼠鍵盤前詢問；ask-once：查看螢幕不詢問，操作前詢問一次，同意後在「同意有效期」內不再詢問；never-ask：從不詢問。' },
-    grantMinutes: { title: '同意有效期', suffix: '分鐘', description: '只對 ask-once 有效。' },
+    permission: { title: '詢問時機', description: 'ask-each-turn：每輪查看螢幕或操作前都詢問；ask-before-acting：查看螢幕不詢問，每輪操作滑鼠鍵盤前詢問；ask-once：查看螢幕不詢問，操作前詢問一次，同意後在「同意有效期」內不再詢問；never-ask：從不詢問。無論選哪一檔，在命令列視窗裡輸入或按鍵、按 win+r 之前，都會單獨詢問一次，同意後在「同意有效期」內不再詢問。' },
+    grantMinutes: { title: '同意有效期', suffix: '分鐘', description: '對 ask-once 和命令列視窗的單獨詢問有效。' },
     userIdleMs: { title: '讓位時長', description: '你操作滑鼠或鍵盤後，需靜止這麼久才繼續操作。' },
     maxYieldWaitMs: { title: '讓位最多等待' },
     maxWidth: { title: '截圖最大寬度' },

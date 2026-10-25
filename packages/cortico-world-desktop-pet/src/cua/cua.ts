@@ -13,7 +13,9 @@
  * `permission` sets when the person is asked first (config.ts, PERMISSION_LEVELS): at most once
  * a turn, before the first call that reads the screen or before the first input, or once for
  * `grantMinutes`, or never. The question goes through `askPermission` (the pet's bubble), or through a
- * system dialog while the pet page cannot ask. A refusal stands until the turn ends.
+ * system dialog while the pet page cannot ask. A refusal stands until the turn ends. Working in a
+ * terminal (terminal.ts) is asked about on its own after that, at every level, and a yes holds for
+ * `grantMinutes`.
  *
  * Every tool is interruptible. When the call's signal aborts, the tool stops at the next point
  * where no input is left half-done and its receipt says what it did: a call waiting for the
@@ -34,6 +36,7 @@ import { childExecArgv } from 'cortico/extensions/runtime.ts';
 import type { CuaConfig, PermissionLevel } from './config.ts';
 import { cuaText, type CuaText } from './i18n/index.ts';
 import { CUA_TOOL_DECLS } from './tools.ts';
+import { isTerminal, opensRunBox } from './terminal.ts';
 import { fit } from './engine/image.ts';
 import { parseKeys } from './engine/keys.ts';
 import { MODEL_TEXT, type ModelLanguage, type ModelText } from './model-text.ts';
@@ -82,7 +85,7 @@ interface View extends Target {
 }
 
 /** The display part of an engine result. */
-const screenOf = (r: ScreenInfo): ScreenInfo => ({ displays: r.displays, layout: r.layout, cursor: r.cursor, foreground: r.foreground, foregroundDisplay: r.foregroundDisplay });
+const screenOf = (r: ScreenInfo): ScreenInfo => ({ displays: r.displays, layout: r.layout, cursor: r.cursor, foreground: r.foreground, foregroundApp: r.foregroundApp ?? null, foregroundDisplay: r.foregroundDisplay });
 
 /** `p`'s value, or null when `signal` aborts first. */
 function untilAborted<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T | null> {
@@ -118,6 +121,10 @@ export class Cua {
   private permission: Promise<Answer> | null = null;
   /** ask-once: a yes holds until then (ms since epoch). */
   private grantedUntil = 0;
+  /** The answer to working in a terminal while it is open, or a refusal until the turn ends. */
+  private terminalPermission: Promise<Answer> | null = null;
+  /** A yes to working in a terminal holds until then (ms since epoch). */
+  private terminalGrantedUntil = 0;
   /** The screen size asked of the engine, once per engine start. */
   private screenAsked: Promise<void> | null = null;
 
@@ -152,6 +159,7 @@ export class Cua {
 
   onTurnEnded(): void {
     this.permission = null;
+    this.terminalPermission = null;
   }
 
   start(host: WorldHost): void {
@@ -276,12 +284,42 @@ export class Cua {
   }
 
   private async askPermission(level: PermissionLevel): Promise<Answer> {
-    const who = this.opts.botName?.() || 'bot';
+    const who = this.who;
     const a = this.ui.ask;
-    const question = level === 'ask-each-turn' ? a.eachTurn(who) : level === 'ask-once' ? a.once(who, this.cfg.grantMinutes) : a.acting(who);
+    return this.ask(level === 'ask-each-turn' ? a.eachTurn(who) : level === 'ask-once' ? a.once(who, this.cfg.grantMinutes) : a.acting(who));
+  }
+
+  private get who(): string {
+    return this.opts.botName?.() || 'bot';
+  }
+
+  private async ask(question: string): Promise<Answer> {
+    const a = this.ui.ask;
     const viaApp = await this.opts.askPermission?.(question, [a.yes, a.no]) ?? null;
     if (viaApp) return viaApp;
     return this.call<Answer>({ op: 'confirm', text: question, caption: a.caption, yes: a.yes, no: a.no, timeoutMs: PERMISSION_TIMEOUT_MS });
+  }
+
+  /**
+   * Before a step that works in a terminal: `question` gets the foreground window as the engine sees
+   * it now and returns the question, or null when the step does not work in a terminal there.
+   */
+  private async permitTerminal(signal: AbortSignal | undefined, question: (window: string, terminal: boolean) => string | null): Promise<void> {
+    await this.permit('act', signal);
+    const info = await this.call<ScreenInfo>({ op: 'info' }, signal);
+    this.screen = screenOf(info);
+    if (Date.now() < this.terminalGrantedUntil) return;
+    const q = question(info.foreground ?? info.foregroundApp ?? '', isTerminal(info.foregroundApp));
+    if (!q) return;
+    this.terminalPermission ??= this.ask(q);
+    const answer = await untilAborted(this.terminalPermission, signal);
+    if (answer === null) throw new Interrupted(this.t.interruptedAsking);
+    if (answer === 'yes') {
+      this.terminalGrantedUntil = Date.now() + this.cfg.grantMinutes * 60_000;
+      this.terminalPermission = null;
+      return;
+    }
+    throw new NotPermitted(answer === 'timeout' ? this.t.askTimedOut(PERMISSION_TIMEOUT_MS / 1000) : this.t.terminalRefused);
   }
 
   /* ---------- coordinates ---------- */
@@ -496,6 +534,8 @@ export class Cua {
     if (refused) return refused;
     const text = typeof args.text === 'string' ? args.text : '';
     if (!text) return { text: this.t.notRun('pet_cua_type', this.t.typeEmpty), failed: true };
+    const minutes = this.cfg.grantMinutes;
+    await this.permitTerminal(signal, (window, terminal) => (terminal ? this.ui.ask.terminal.type(this.who, window, text, minutes) : null));
     const res = await this.call<TypeResult>({ op: 'type', text, chunkDelayMs: this.cfg.typeChunkDelayMs, yield: this.yieldCfg }, signal);
     const total = [...text].length;
     const done = res.stoppedBy === 'cancel' || res.stoppedBy === 'user' ? this.t.typedPart(res.typed, total, res.stoppedBy) : this.t.typed(total);
@@ -508,6 +548,9 @@ export class Cua {
     const spec = typeof args.keys === 'string' ? args.keys : '';
     const parsed = parseKeys(spec, this.language);
     if ('error' in parsed) return { text: this.t.notRun('pet_cua_key', this.t.keyBad(parsed.error)), failed: true };
+    const keys = spec.trim(), minutes = this.cfg.grantMinutes, ask = this.ui.ask.terminal;
+    await this.permitTerminal(signal, (window, terminal) => (opensRunBox(parsed.chords, process.platform) ? ask.runBox(this.who, keys, minutes)
+      : terminal ? ask.key(this.who, window, keys, minutes) : null));
     const res = await this.call<InputResult>({ op: 'key', chords: parsed.chords, yield: this.yieldCfg }, signal);
     return this.after('pet_cua_key', res, signal, this.t.pressed(spec.trim()), args);
   }
@@ -580,6 +623,7 @@ export class Cua {
       'cua.control': t.control(this.cfg.control),
       'cua.idle': String(Math.round(this.cfg.userIdleMs / 100) / 10),
       'cua.permission': t.permission(this.level, this.cfg.grantMinutes),
+      'cua.terminal': t.terminal(this.cfg.grantMinutes),
     };
     return renderTemplate(readFileSync(this.envPromptFile(), 'utf8'), vars).trim();
   }

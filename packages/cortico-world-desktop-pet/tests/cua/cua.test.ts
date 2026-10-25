@@ -371,9 +371,9 @@ describe('displays', () => {
     cfg.screenshot.settleMs = 0;
     const w = new Cua({ cfg: () => cfg });
     const two = { displays: [{ index: 1, primary: true, width: 2560, height: 1600 }, { index: 2, primary: false, width: 2560, height: 1440 }], layout: 'two', cursor: null };
-    // the Run box comes up on display 1 once the key has been pressed
+    // a new window comes up on display 1 once the key has been pressed
     let pressed = false;
-    const fg = () => (pressed ? { foreground: 'Run', foregroundDisplay: 1 } : { foreground: 'Browser', foregroundDisplay: 2 });
+    const fg = () => (pressed ? { foreground: 'New window', foregroundDisplay: 1 } : { foreground: 'Browser', foregroundDisplay: 2 });
     const shots: unknown[] = [];
     const inner = w as unknown as { spawn: () => unknown; pending: Map<number, { done: (v: unknown) => void; timer: NodeJS.Timeout }> };
     inner.spawn = () => ({
@@ -393,7 +393,7 @@ describe('displays', () => {
     const call = (name: string, args: Record<string, unknown>) =>
       w.tools().find((t) => t.name === name)!.handler(args, { role: 'main', log: new FakeHost().log }) as Promise<{ text: string }>;
     await call('pet_cua_screenshot', { display: 2 });
-    const out = await call('pet_cua_key', { keys: 'win+r' });
+    const out = await call('pet_cua_key', { keys: 'ctrl+n' });
     expect(shots).toEqual([2, 1]);
     expect(out.text).toContain('显示器 1/2');
   });

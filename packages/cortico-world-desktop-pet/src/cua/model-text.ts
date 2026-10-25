@@ -18,6 +18,7 @@ const zh = {
   interruptedBeforeAct: '收到打断时还没开始操作。',
   interruptedAsking: '收到打断时还在等使用者回答能不能用电脑。',
   askTimedOut: (seconds: number) => `问了使用者能不能用电脑,${seconds} 秒没有回应,这一轮不能用。`,
+  terminalRefused: '使用者这一轮没有允许在命令行窗口里输入或按键,也没有允许按 win+r。',
   refused: (level: PermissionLevel) => `使用者这一轮没有允许${level === 'ask-each-turn' ? '用电脑' : '动鼠标键盘'}。`,
   worldStopped: 'World 已停止',
   switchedOff: '电脑操作已关闭',
@@ -112,6 +113,7 @@ const zh = {
     'ask-once': `截图和列窗口不用先问。动鼠标或键盘之前会问使用者一次,同意后 ${grantMinutes} 分钟内不再问;使用者没同意,这一轮的输入工具都不执行,截图照常;不要换别的工具绕过去,等使用者开口。`,
     'never-ask': '看屏幕和动鼠标键盘都不用先问使用者,工具直接执行。',
   })[level],
+  terminal: (grantMinutes: number) => `在命令行窗口里打字或按键,以及按 win+r 打开运行框之前,不管上面的询问设置,都会单独问使用者一次,同意后 ${grantMinutes} 分钟内不再问;使用者没同意,这一轮这些步骤都不执行。`,
 };
 
 const en: typeof zh = {
@@ -121,6 +123,7 @@ const en: typeof zh = {
   interruptedBeforeAct: 'Interrupted before anything was done.',
   interruptedAsking: 'Interrupted while still waiting for the person to answer whether you may use the computer.',
   askTimedOut: (seconds) => `Asked the person whether you may use the computer; no answer in ${seconds} seconds, so not this turn.`,
+  terminalRefused: 'The person did not allow typing or keys in a terminal window, or win+r, this turn.',
   refused: (level) => `The person did not allow ${level === 'ask-each-turn' ? 'computer use' : 'mouse and keyboard input'} this turn.`,
   worldStopped: 'The World stopped',
   switchedOff: 'Computer use was switched off',
@@ -210,6 +213,7 @@ const en: typeof zh = {
     'ask-once': `Screenshots and window lists need no asking. Before mouse or keyboard input the person is asked once, and after a yes not again for ${grantMinutes} minutes; if they do not agree, none of the input tools run this turn, while screenshots still work; do not route around it with other tools, wait for the person to speak.`,
     'never-ask': 'Looking at the screen and using the mouse and keyboard need no asking; the tools run directly.',
   })[level],
+  terminal: (grantMinutes) => `Before typing or pressing keys in a terminal window, and before win+r opens the Run box, the person is asked once more whatever the setting above, and after a yes not again for ${grantMinutes} minutes; if they do not agree, none of these steps run this turn.`,
 };
 
 export type ModelText = typeof zh;

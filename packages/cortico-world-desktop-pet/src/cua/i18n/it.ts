@@ -9,6 +9,11 @@ const it: Translation<CuaText> = {
     caption: 'Controllo del computer',
     yes: 'Sì',
     no: 'Non stavolta',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} vuole scrivere nella finestra del terminale «${window}»:\n${text}\nCiò che viene scritto può essere eseguito come comando. Dopo un sì, per ${minutes} min non chiede più per scrivere o premere tasti in un terminale né per win+r. Va bene?`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} vuole premere ${keys} nella finestra del terminale «${window}». Dopo un sì, per ${minutes} min non chiede più per scrivere o premere tasti in un terminale né per win+r. Va bene?`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} vuole premere ${keys} per aprire la finestra Esegui, che può avviare programmi o eseguire comandi. Dopo un sì, per ${minutes} min non chiede più per scrivere o premere tasti in un terminale né per win+r. Va bene?`,
+    },
   },
 
   preflight: {
@@ -31,8 +36,8 @@ const it: Translation<CuaText> = {
     group: 'Controllo del computer',
     enabled: { title: 'Attiva il controllo del computer' },
     control: { title: 'Consenti mouse e tastiera', description: "Se disattivato, solo screenshot ed elenco delle finestre." },
-    permission: { title: 'Quando chiederti', description: 'ask-each-turn: chiede ogni turno prima di guardare lo schermo o agire; ask-before-acting: guardare è libero, chiede ogni turno prima di usare mouse e tastiera; ask-once: guardare è libero, chiede una volta prima di usare mouse e tastiera, e un sì dura quanto indicato in «Un sì vale»; never-ask: non chiede mai.' },
-    grantMinutes: { title: 'Un sì vale', suffix: 'min', description: 'Solo per ask-once.' },
+    permission: { title: 'Quando chiederti', description: 'ask-each-turn: chiede ogni turno prima di guardare lo schermo o agire; ask-before-acting: guardare è libero, chiede ogni turno prima di usare mouse e tastiera; ask-once: guardare è libero, chiede una volta prima di usare mouse e tastiera, e un sì dura quanto indicato in «Un sì vale»; never-ask: non chiede mai. Con qualsiasi impostazione, prima di scrivere o premere tasti in un terminale e prima di win+r chiede una volta a parte, e un sì dura quanto indicato in «Un sì vale».' },
+    grantMinutes: { title: 'Un sì vale', suffix: 'min', description: 'Per ask-once e per la domanda a parte sui terminali.' },
     userIdleMs: { title: 'Lasciarti il passo per', description: 'Dopo che hai usato mouse o tastiera, aspetta che restino inattivi per questo tempo.' },
     maxYieldWaitMs: { title: 'Attesa massima per te' },
     maxWidth: { title: 'Larghezza massima screenshot' },

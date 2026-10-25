@@ -9,6 +9,11 @@ const fr: Translation<CuaText> = {
     caption: "Contrôle de l'ordinateur",
     yes: 'Oui',
     no: 'Pas cette fois',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} veut saisir dans la fenêtre de terminal « ${window} » :\n${text}\nCe texte peut être exécuté comme une commande. Après un oui, la saisie et les touches dans un terminal ainsi que win+r ne sont plus demandées pendant ${minutes} min. D'accord ?`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} veut appuyer sur ${keys} dans la fenêtre de terminal « ${window} ». Après un oui, la saisie et les touches dans un terminal ainsi que win+r ne sont plus demandées pendant ${minutes} min. D'accord ?`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} veut appuyer sur ${keys} pour ouvrir la boîte Exécuter, qui peut lancer des programmes ou des commandes. Après un oui, la saisie et les touches dans un terminal ainsi que win+r ne sont plus demandées pendant ${minutes} min. D'accord ?`,
+    },
   },
 
   preflight: {
@@ -31,8 +36,8 @@ const fr: Translation<CuaText> = {
     group: "Contrôle de l'ordinateur",
     enabled: { title: "Activer le contrôle de l'ordinateur" },
     control: { title: 'Autoriser la souris et le clavier', description: "Désactivé : seulement les captures d'écran et la liste des fenêtres." },
-    permission: { title: 'Quand vous demander', description: "ask-each-turn : demande avant de regarder l'écran ou d'agir, à chaque tour ; ask-before-acting : regarder est libre, demande avant d'utiliser la souris et le clavier à chaque tour ; ask-once : regarder est libre, demande une fois avant d'utiliser la souris et le clavier, et un oui vaut pendant « Un oui vaut » ; never-ask : ne demande jamais." },
-    grantMinutes: { title: 'Un oui vaut', suffix: 'min', description: 'Pour ask-once uniquement.' },
+    permission: { title: 'Quand vous demander', description: "ask-each-turn : demande avant de regarder l'écran ou d'agir, à chaque tour ; ask-before-acting : regarder est libre, demande avant d'utiliser la souris et le clavier à chaque tour ; ask-once : regarder est libre, demande une fois avant d'utiliser la souris et le clavier, et un oui vaut pendant « Un oui vaut » ; never-ask : ne demande jamais. Quel que soit le réglage, une saisie ou une touche dans un terminal et win+r sont demandées une fois à part, et un oui vaut pendant « Un oui vaut »." },
+    grantMinutes: { title: 'Un oui vaut', suffix: 'min', description: 'Pour ask-once et pour la question à part sur les terminaux.' },
     userIdleMs: { title: 'Vous laisser la main pendant', description: "Après que vous avez utilisé la souris ou le clavier, attend qu'ils soient restés immobiles aussi longtemps." },
     maxYieldWaitMs: { title: 'Attente maximale pour vous' },
     maxWidth: { title: 'Largeur max. des captures' },

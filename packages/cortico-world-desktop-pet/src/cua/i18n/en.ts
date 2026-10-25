@@ -16,6 +16,11 @@ const en: CuaText = {
     caption: 'Computer use',
     yes: 'Yes',
     no: 'Not this time',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} wants to type into the terminal window "${window}":\n${text}\nWhat is typed may run as a command. After a yes, typing and keys in terminal windows and win+r are not asked about again for ${minutes} min. OK?`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} wants to press ${keys} in the terminal window "${window}". After a yes, typing and keys in terminal windows and win+r are not asked about again for ${minutes} min. OK?`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} wants to press ${keys} to open the Run box, which can start programs or run commands. After a yes, typing and keys in terminal windows and win+r are not asked about again for ${minutes} min. OK?`,
+    },
   },
 
   /** Whether this system runs computer use. */
@@ -41,8 +46,8 @@ const en: CuaText = {
     group: 'Computer use',
     enabled: { title: 'Turn on computer use' },
     control: { title: 'Allow the mouse and keyboard', description: 'When off, only screenshots and the window list.' },
-    permission: { title: 'When to ask you', description: 'ask-each-turn: before looking at the screen or acting, every turn; ask-before-acting: looking is free, asks before using the mouse and keyboard every turn; ask-once: looking is free, asks once before using the mouse and keyboard, and a yes holds for "A yes lasts"; never-ask: never asks.' },
-    grantMinutes: { title: 'A yes lasts', suffix: 'min', description: 'For ask-once only.' },
+    permission: { title: 'When to ask you', description: 'ask-each-turn: before looking at the screen or acting, every turn; ask-before-acting: looking is free, asks before using the mouse and keyboard every turn; ask-once: looking is free, asks once before using the mouse and keyboard, and a yes holds for "A yes lasts"; never-ask: never asks. Whatever the setting, typing or pressing keys in a terminal window and pressing win+r are asked about once on their own, and a yes holds for "A yes lasts".' },
+    grantMinutes: { title: 'A yes lasts', suffix: 'min', description: 'For ask-once and for the separate question about terminal windows.' },
     userIdleMs: { title: 'Stay out of the way for', description: 'After you use the mouse or keyboard, Coo waits until they have been still this long.' },
     maxYieldWaitMs: { title: 'Longest wait for you' },
     maxWidth: { title: 'Screenshot max width' },

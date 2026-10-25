@@ -9,6 +9,11 @@ const es419: Translation<CuaText> = {
     caption: 'Uso de la computadora',
     yes: 'Sí',
     no: 'Esta vez no',
+    terminal: {
+      type: (who: string, window: string, text: string, minutes: number) => `${who} quiere escribir en la ventana de terminal “${window}”:\n${text}\nLo que se escriba puede ejecutarse como un comando. Si dices que sí, durante ${minutes} min no se vuelve a preguntar por escribir o presionar teclas en una terminal ni por win+r. ¿Está bien?`,
+      key: (who: string, window: string, keys: string, minutes: number) => `${who} quiere presionar ${keys} en la ventana de terminal “${window}”. Si dices que sí, durante ${minutes} min no se vuelve a preguntar por escribir o presionar teclas en una terminal ni por win+r. ¿Está bien?`,
+      runBox: (who: string, keys: string, minutes: number) => `${who} quiere presionar ${keys} para abrir el cuadro Ejecutar, que puede iniciar programas o ejecutar comandos. Si dices que sí, durante ${minutes} min no se vuelve a preguntar por escribir o presionar teclas en una terminal ni por win+r. ¿Está bien?`,
+    },
   },
 
   preflight: {
@@ -31,8 +36,8 @@ const es419: Translation<CuaText> = {
     group: 'Uso de la computadora',
     enabled: { title: 'Activar el uso de la computadora' },
     control: { title: 'Permitir el mouse y el teclado', description: 'Si está desactivado, solo capturas de pantalla y la lista de ventanas.' },
-    permission: { title: 'Cuándo preguntarte', description: 'ask-each-turn: antes de mirar la pantalla o actuar, en cada turno; ask-before-acting: mirar es libre, pregunta antes de usar el mouse y el teclado en cada turno; ask-once: mirar es libre, pregunta una vez antes de usar el mouse y el teclado, y un sí vale durante “Un sí dura”; never-ask: nunca pregunta.' },
-    grantMinutes: { title: 'Un sí dura', suffix: 'min', description: 'Solo para ask-once.' },
+    permission: { title: 'Cuándo preguntarte', description: 'ask-each-turn: antes de mirar la pantalla o actuar, en cada turno; ask-before-acting: mirar es libre, pregunta antes de usar el mouse y el teclado en cada turno; ask-once: mirar es libre, pregunta una vez antes de usar el mouse y el teclado, y un sí vale durante “Un sí dura”; never-ask: nunca pregunta. Con cualquier opción, antes de escribir o presionar teclas en una terminal y antes de win+r pregunta una vez aparte, y un sí vale durante “Un sí dura”.' },
+    grantMinutes: { title: 'Un sí dura', suffix: 'min', description: 'Para ask-once y para la pregunta aparte sobre las terminales.' },
     userIdleMs: { title: 'No estorbar durante', description: 'Después de que usas el mouse o el teclado, espera hasta que hayan estado quietos este tiempo.' },
     maxYieldWaitMs: { title: 'Espera máxima por ti' },
     maxWidth: { title: 'Ancho máximo de la captura' },
