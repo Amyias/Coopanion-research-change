@@ -61,7 +61,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS days_by_date ON days (date, running_minutes, interacted_minutes, messages, install_id);
   CREATE INDEX IF NOT EXISTS days_by_install ON days (install_id, date, running_minutes, interacted_minutes);
   CREATE INDEX IF NOT EXISTS events_by_type ON events (type, ts);
+  -- each day record's models and extensions, one row apiece, rewritten with the record: the summary reads these instead of expanding every record
+  CREATE TABLE IF NOT EXISTS day_models (
+    install_id TEXT NOT NULL, date TEXT NOT NULL, vendor, endpoint_kind, model,
+    calls, failed, aborted, tokens_in, tokens_cached, tokens_out, failed_status
+  );
+  CREATE INDEX IF NOT EXISTS day_models_by_install ON day_models (install_id, date);
+  CREATE TABLE IF NOT EXISTS day_extensions (install_id TEXT NOT NULL, date TEXT NOT NULL, name);
+  CREATE INDEX IF NOT EXISTS day_extensions_by_install ON day_extensions (install_id, date);
 `);
+
+/** day_models' columns after install and date, read from a `models` entry `m`. */
+const MODEL_COLUMNS = `json_extract(m.value, '$.vendor'), json_extract(m.value, '$.endpointKind'), json_extract(m.value, '$.model'),
+  json_extract(m.value, '$.calls'), json_extract(m.value, '$.failed'), json_extract(m.value, '$.aborted'),
+  json_extract(m.value, '$.tokensIn'), json_extract(m.value, '$.tokensCached'), json_extract(m.value, '$.tokensOut'),
+  json_extract(m.value, '$.failedStatus')`;
+// version 1: day_models and day_extensions filled from the day records stored before them
+if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+  db.exec(`
+    BEGIN;
+    DELETE FROM day_models;
+    DELETE FROM day_extensions;
+    INSERT INTO day_models SELECT d.install_id, d.date, ${MODEL_COLUMNS} FROM days d, json_each(d.data, '$.models') m;
+    INSERT INTO day_extensions SELECT d.install_id, d.date, json_extract(e.value, '$.name') FROM days d, json_each(d.data, '$.extensions') e;
+    PRAGMA user_version = 1;
+    COMMIT;
+  `);
+}
 
 const upsertInstall = db.prepare(`
   INSERT INTO installs (install_id, first_date, first_seen, last_seen, version, os, os_release, arch, locale, time_zone)
@@ -79,6 +105,10 @@ const upsertDay = db.prepare(`
     received_at = excluded.received_at, running_minutes = excluded.running_minutes,
     interacted_minutes = excluded.interacted_minutes, messages = excluded.messages, data = excluded.data
 `);
+const clearDayModels = db.prepare(`DELETE FROM day_models WHERE install_id = ? AND date = ?`);
+const insertDayModels = db.prepare(`INSERT INTO day_models SELECT :id, :date, ${MODEL_COLUMNS} FROM json_each(:data, '$.models') m`);
+const clearDayExtensions = db.prepare(`DELETE FROM day_extensions WHERE install_id = ? AND date = ?`);
+const insertDayExtensions = db.prepare(`INSERT INTO day_extensions SELECT :id, :date, json_extract(e.value, '$.name') FROM json_each(:data, '$.extensions') e`);
 const setSource = db.prepare(`UPDATE installs SET source = ? WHERE install_id = ?`);
 const setUninstalled = db.prepare(`UPDATE installs SET uninstalled_at = ? WHERE install_id = ?`);
 const setTelemetryOff = db.prepare(`UPDATE installs SET telemetry_off_at = ? WHERE install_id = ?`);
@@ -117,6 +147,10 @@ function report(body) {
       const data = JSON.stringify(d);
       if (!DATE.test(d?.date ?? '') || Buffer.byteLength(data) > MAX_DAY_BYTES) continue;
       upsertDay.run(id, d.date, now, int(d.runningMinutes), int(d.interactedMinutes), int(d.messagesText) + int(d.messagesVoice), data);
+      clearDayModels.run(id, d.date);
+      insertDayModels.run({ id, date: d.date, data });
+      clearDayExtensions.run(id, d.date);
+      insertDayExtensions.run({ id, date: d.date, data });
     }
     db.exec('COMMIT');
   } catch (err) {
