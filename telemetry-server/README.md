@@ -1,6 +1,6 @@
 # Coopanion telemetry server
 
-Receives the app's anonymous usage statistics. The client is `core/telemetry.ts`; every field is listed in [docs/TELEMETRY.md](../docs/TELEMETRY.md). One file (`server.mjs`), Node's built-in SQLite, no dependencies. Client IP addresses are used only for rate limiting in memory and are never stored.
+Receives the app's anonymous usage statistics. The client is `core/telemetry.ts`; every field is listed in [docs/TELEMETRY.md](../docs/TELEMETRY.md). Two files (`server.mjs`, and `stats.mjs` for the summary, run in a worker thread), Node's built-in SQLite, no dependencies. Client IP addresses are used only for rate limiting in memory and are never stored.
 
 ## Run
 
