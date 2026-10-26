@@ -37,14 +37,14 @@ function mount() {
   rail.setNav(nav);
   document.body.prepend(rail.el);
   rail.el.after(rail.backdrop);
+  document.body.prepend(rail.toggle);
   const offRoute = router.onChange((route) => rail.setRoute(route));
   const stopRouter = router.start();
   const dispose = () => { life.abort(); offRoute.dispose(); stopRouter.dispose(); rail.el.remove(); };
   disposals.push(dispose);
   return {
     rail, dispose,
-    toggle: rail.el.querySelector('.companion-sidebar-toggle'),
-    meta: rail.el.querySelector('.companion-brand-meta'),
+    toggle: rail.toggle,
   };
 }
 
@@ -70,14 +70,13 @@ afterEach(() => {
 
 describe('settings window rail', () => {
   it('retains the C and both eyes while toggling and restores the choice after remount', () => {
-    const { rail, toggle, meta, dispose } = mount();
+    const { rail, toggle, dispose } = mount();
     const eyes = [...rail.el.querySelectorAll('.companion-brand .accent')];
     const c = rail.el.querySelector('.companion-brand-c');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     toggle.click();
     expect(toggle.getAttribute('aria-label')).toBe(L.expandSidebar);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(meta.inert).toBe(true);
     expect([...rail.el.querySelectorAll('.companion-brand .accent')]).toEqual(eyes);
     expect(rail.el.querySelector('.companion-brand-c')).toBe(c);
     expect(eyes).toHaveLength(2);
@@ -85,22 +84,29 @@ describe('settings window rail', () => {
     const restored = mount();
     expect(restored.toggle.getAttribute('aria-expanded')).toBe('false');
     restored.toggle.click();
-    expect(restored.meta.inert).toBe(false);
     expect(restored.toggle.getAttribute('aria-label')).toBe(L.collapseSidebar);
   });
 
-  it('adapts to window width until a person chooses a state', () => {
+  it('folds at the compact breakpoint after a person expands it', () => {
     const { toggle } = mount();
     queries.get('(max-width: 1000px)').set(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     toggle.click();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     queries.get('(max-width: 1000px)').set(false);
     queries.get('(max-width: 1000px)').set(true);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('starts compact even when the saved choice was expanded', () => {
+    saved.set('companion.sidebar.collapsed', false);
+    queries.get('(max-width: 1000px)').set(true);
+    expect(mount().toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('closes the small-screen overlay on Escape, backdrop and navigation without replacing the desktop choice', () => {
     const { rail, toggle } = mount();
+    queries.get('(max-width: 1000px)').set(true);
     queries.get('(max-width: 720px)').set(true);
     const backdrop = document.querySelector('.companion-sidebar-backdrop');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -118,6 +124,7 @@ describe('settings window rail', () => {
     rail.el.querySelector('a.navitem').click();
     expect(backdrop.hidden).toBe(true);
     queries.get('(max-width: 720px)').set(false);
+    queries.get('(max-width: 1000px)').set(false);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
   });
 
@@ -155,4 +162,15 @@ describe('settings window rail', () => {
     expect(document.querySelector('.companion-sidebar-tooltip')).toBeNull();
     expect(document.querySelector('.companion-sidebar-backdrop')).toBeNull();
   });
+});
+
+
+it('enables the upper fade only while navigation has scrolled away from the top', () => {
+  const { rail } = mount();
+  const nav = rail.el.querySelector('nav');
+  expect(nav.classList.contains('is-scrolled')).toBe(false);
+  nav.scrollTop = 30; nav.dispatchEvent(new Event('scroll'));
+  expect(nav.classList.contains('is-scrolled')).toBe(true);
+  nav.scrollTop = 0; nav.dispatchEvent(new Event('scroll'));
+  expect(nav.classList.contains('is-scrolled')).toBe(false);
 });

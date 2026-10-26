@@ -5,9 +5,46 @@
  */
 
 /* ---------- compact navigation ---------- */
-body.companion-sidebar { display: flex; height: 100dvh; overflow: hidden; }
+body.companion-sidebar {
+  --titlebar-height: 36px; --rail-motion: 260ms cubic-bezier(.22, 1, .36, 1);
+  display: flex; height: 100dvh; padding-top: var(--titlebar-height); overflow: hidden;
+}
+.companion-titlebar {
+  position: fixed; inset: 0 0 auto; height: var(--titlebar-height); z-index: 110;
+  background: var(--paper-2); color: var(--ink-soft); app-region: drag;
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--border) 50%, transparent);
+}
+/* The overlay's available area also excludes left-side window controls on Linux. */
+.companion-titlebar-actions {
+  position: absolute; inset: 0 max(64px, calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px)) 0 max(8px, calc(env(titlebar-area-x, 0px) + 8px));
+  display: flex; align-items: center; gap: 2px;
+}
+.companion-titlebar[data-platform="darwin"] .companion-titlebar-actions { left: max(86px, calc(env(titlebar-area-x, 0px) + 8px)); }
+.companion-titlebar button {
+  display: grid; place-items: center; flex: none; width: 32px; height: 28px; padding: 5px; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; cursor: pointer; app-region: no-drag;
+}
+.companion-titlebar button:hover:enabled { background: var(--hover); color: var(--foreground); }
+.companion-titlebar button:disabled { opacity: .3; cursor: default; }
+.companion-titlebar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.companion-titlebar button > svg { width: 18px; height: 18px; }
+.companion-titlebar-release {
+  display: flex; align-items: center; gap: 14px; min-width: 0; height: 16px;
+  margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--border);
+  font-size: 11px; line-height: 16px; white-space: nowrap;
+}
+.companion-titlebar-release a { text-decoration: none; }
+.companion-titlebar-release a:hover { text-decoration: underline; }
+.companion-titlebar-release a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.companion-version { flex: none; color: var(--ink-dim); app-region: no-drag; }
+.companion-version:hover { color: var(--ink); }
+.companion-update { min-width: 0; }
+.companion-update:empty { display: none; }
+.companion-update .release-hint { display: block; overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); app-region: no-drag; }
+.companion-update a.release-hint { color: var(--accent); }
+.companion-sidebar-chevron { transform-origin: 15px 12px; transition: transform var(--rail-motion); }
+.companion-sidebar-toggle[aria-expanded="false"] .companion-sidebar-chevron { transform: rotate(180deg); }
 #rail {
-  --rail-motion: 260ms cubic-bezier(.22, 1, .36, 1);
   width: 248px; height: 100%; flex: none; position: relative; z-index: 10;
   border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   transition: width var(--rail-motion);
@@ -29,42 +66,26 @@ body.companion-sidebar { display: flex; height: 100dvh; overflow: hidden; }
 .is-collapsed .companion-brand-o-second { transform: translate(-20px, 6px) scale(.7); }
 .is-collapsed .companion-brand-tail { opacity: 0; transform: translateX(-18px); }
 
-.companion-sidebar-tools { display: flex; align-items: center; margin-top: 8px; min-height: 36px; transition: margin-top var(--rail-motion); }
-/* a new release's link under the version: a little more room before the button, so the two lines of links do not run into it */
-#rail:not(.is-collapsed) .companion-brand-meta:has(.release-hint) + .companion-sidebar-tools { margin-top: 14px; }
-/* folded, the link's box shrinks to nothing: the button rises to where it is with no new release (rail/index.ts) */
-.companion-release { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--rail-motion); }
-.companion-release > div { min-height: 0; overflow: hidden; }
-.is-collapsed .companion-release { grid-template-rows: 0fr; }
-.companion-sidebar-toggle {
-  display: flex; align-items: center; gap: 12px; height: 36px; flex: 0 1 auto; min-width: 0; padding: 0 8px;
-  border: 0; border-radius: 9px; background: transparent; color: var(--muted-foreground); cursor: pointer;
-  font: 450 13px/1.35 var(--sans); white-space: nowrap;
+#rail nav.stack {
+  display: block; padding: 8px 12px 32px; overflow-x: hidden; overflow-y: auto; scrollbar-width: none;
+  scroll-padding-block: 32px;
+  mask-image: linear-gradient(to left, #000 var(--rail-scrollbar-width, 0px), transparent var(--rail-scrollbar-width, 0px)),
+    linear-gradient(to bottom, var(--rail-top-mask, #000), #000 32px, #000 calc(100% - 32px), transparent);
 }
-.companion-sidebar-toggle:hover { background: var(--hover); color: var(--foreground); }
-.companion-sidebar-toggle > svg { width: 20px; height: 20px; flex: none; }
-.companion-sidebar-toggle .lbl { overflow: hidden; text-overflow: ellipsis; }
-.companion-sidebar-chevron { transform-origin: 15px 12px; transition: transform var(--rail-motion); }
-.is-collapsed .companion-sidebar-chevron { transform: rotate(180deg); }
-/* the version right under the logo, centred on it; a new release's link wraps under it in the same width */
-.companion-brand-meta { width: 174px; margin: 2px 0 0 10px; text-align: center; transition: opacity 140ms ease, visibility 0s linear 0s; }
-.companion-brand-meta .companion-version { display: block; margin: 0; white-space: nowrap; font-size: 11px; }
-.companion-brand-meta .release-hint {
-  display: inline-block; max-width: 100%; margin-top: 5px; padding: 2px 8px; box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 7px;
-  font-size: 11px; line-height: 1.4; text-decoration: none; text-wrap: balance; word-break: keep-all; overflow-wrap: anywhere;
-  transition: background-color 120ms ease, border-color 120ms ease;
+#rail nav.stack.is-scrolled { --rail-top-mask: transparent; }
+/* The native scrollbar uses 10px of the existing right padding, preserving item width. */
+#rail:not(.is-collapsed) nav.stack {
+  --rail-scrollbar-width: 10px;
+  scrollbar-width: auto; scrollbar-gutter: stable; padding-right: calc(12px - var(--rail-scrollbar-width));
 }
-.companion-brand-meta a.release-hint:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: var(--accent); }
-/* the updater's progress (features/release.ts) is a line to read: muted, where a link is in the accent colour */
-.companion-brand-meta span.release-hint { color: var(--muted-foreground); border-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent); }
-/* collapsed, the version only fades out of sight: its room stays, so the collapse button under it does not move
-   (a new release's link under it does fold away, see .companion-release) */
-.is-collapsed .companion-brand-meta { visibility: hidden; opacity: 0; transition: opacity 140ms ease, visibility 0s linear 140ms; }
-
-#rail nav.stack { display: block; padding: 8px 12px 16px; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
-/* the rail scrolls with the wheel but shows no scrollbar */
-#rail nav.stack::-webkit-scrollbar { display: none; }
+#rail nav.stack::-webkit-scrollbar-thumb,
+#kernel-root ::-webkit-scrollbar-thumb { background-color: transparent; }
+#rail:hover nav.stack::-webkit-scrollbar-thumb,
+#kernel-root:hover ::-webkit-scrollbar-thumb { background-color: var(--line-2); }
+#rail nav.stack::-webkit-scrollbar-thumb:hover,
+#rail nav.stack::-webkit-scrollbar-thumb:active,
+#kernel-root ::-webkit-scrollbar-thumb:hover,
+#kernel-root ::-webkit-scrollbar-thumb:active { background-color: var(--line-strong); }
 #rail .navgroup { display: flex; }
 #rail .navgroup-primary + .navgroup-primary { margin-top: 4px; }
 #rail .stacklabel {
@@ -98,7 +119,7 @@ body.companion-sidebar { display: flex; height: 100dvh; overflow: hidden; }
 #rail .companion-runstate { margin-left: 2px; }
 #rail .rail-action { flex: none; width: 40px; height: 32px; }
 #rail .rail-action[hidden] { display: none; }
-.companion-sidebar-toggle:focus-visible, #rail .companion-mode:focus-visible {
+#rail .companion-mode:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
@@ -141,13 +162,16 @@ body.companion-sidebar { display: flex; height: 100dvh; overflow: hidden; }
 }
 @media (max-width: 720px) {
   body.companion-sidebar { padding-left: 72px; }
-  #rail { position: fixed; inset: 0 auto 0 0; z-index: 102; border-bottom: 0; }
+  #rail { position: fixed; inset: var(--titlebar-height) auto 0 0; height: calc(100% - var(--titlebar-height)); z-index: 102; border-bottom: 0; }
   #rail:not(.is-collapsed) { box-shadow: 12px 0 40px #0002; }
-  .companion-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 101; border: 0; padding: 0; background: #0003; }
+  .companion-sidebar-backdrop { display: block; position: fixed; inset: var(--titlebar-height) 0 0; z-index: 101; border: 0; padding: 0; background: #0003; }
   .companion-sidebar #kernel-root { height: 100%; }
 }
 
 /* ---------- one heading and one content width on every page ---------- */
+/* A title line also fits the 34px page controls without shifting its text baseline. */
+.featureintro .pagetitle { line-height: 34px; }
+.featureintro .pagedesc { line-height: 22px; }
 /* the page's controls sit at the right of the title row */
 .featureintro:has(> .companion-introacts) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
 .featureintro:has(> .companion-introacts) > :not(.companion-introacts) { grid-column: 1; }
@@ -181,8 +205,6 @@ input, textarea, [contenteditable]:not([contenteditable="false"]), [contentedita
 .chat-thread .bubble, .pet-bubble.say, .pet-bubble .b-text, .tlscroll, pre, code {
   -webkit-user-select: text; user-select: text;
 }
-
-/* 系统提示词: the persona box takes the window's height less the heading, its note and the buttons */
 
 /* 语音输入: the pet World's panel; its first card is titled like the page */
 .companion-voicebox .sheet:first-of-type > h3 { display: none; }
@@ -220,8 +242,8 @@ input, textarea, [contenteditable]:not([contenteditable="false"]), [contentedita
 /* with less motion asked for, the rail folds at once (its width, the logo, the words, the link under the version) and modes change without fading */
 @media (prefers-reduced-motion: reduce) {
   #rail .companion-enter, #rail .companion-leave, #rail .companion-mode.companion-pressed, #rail .companion-mode.companion-pressed .navicon { animation: none; }
-  #rail { --rail-motion: 0s linear; }
-  #rail .lbl, #rail .rail-name, #rail .rail-rename, #rail .companion-runstate, #rail .stacklabel, .companion-brand-meta { transition: none; }
+  body.companion-sidebar { --rail-motion: 0s linear; }
+  #rail .lbl, #rail .rail-name, #rail .rail-rename, #rail .companion-runstate, #rail .stacklabel { transition: none; }
 }
 
 /* 换模式时只藏起普通模式不列的项(rail/index.ts),导航项自带 display,要显式让 hidden 生效 */

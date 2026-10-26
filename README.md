@@ -151,6 +151,12 @@ Off by default. Tick **Let Coo use this computer** in the Computer use section o
 
 ### Settings window
 
+The title bar uses one theme background across its full width, with a subtle bottom divider, on Windows, macOS and Linux (deb and AppImage). Back, Forward, sidebar folding and light/dark controls stay on the left when the sidebar folds; on macOS they sit to the right of the traffic lights. A thin vertical divider separates these controls from the version and GitHub link; compact update status appears to their right, with details on hover. On Linux the controls follow the available title-bar area reported by Electron, including desktops with window buttons on the left. The sidebar folds when the page width crosses down to 1000px, even after it was manually expanded. Navigation fades at the bottom and, after scrolling, at the top; keyboard focus keeps entries clear of these edges. When navigation overflows, hovering over the expanded sidebar reveals a narrow draggable scrollbar without shifting its entries. The folded sidebar hides the scrollbar and keeps wheel and touchpad scrolling. Content scrollbars start below fixed headings or page tabs and appear while the pointer is in the content area; both areas keep the thumb visible during dragging without changing layout.
+
+Page titles share a text baseline; descriptions sit below it, and usage time filters occupy the second row inside the fixed heading, above its divider. World status badges occupy one line below the title; overflow appears under +N on hover, focus or click. Both World badge and console session overflow popups align to their +N button, stay within the content edges and grow to at most 360px wide. Overflow keeps keyboard focus and scroll position through refreshes; Arrow Down enters badge details, and Escape closes them. Page tabs wrap onto rows of fixed height, with the selection underline sliding within a row and appearing in place when switching rows. Monetary amounts use two decimal places; average costs use three. Cost chart axis labels are at least one cent apart.
+
+The settings window defaults to 1200 × 820 DIP and remembers its last unmaximized size when closed and restores it within the primary display’s work area, including displays smaller than the usual minimum window size.
+
 Click the tray icon, or right-click Coo and click the gear. **Normal mode** shows the pages about the pet; **Advanced mode** at the bottom left of the expanded sidebar adds Worlds, models, extensions, memory, console and diagnostics.
 
 | Page | What is there |
@@ -170,7 +176,7 @@ The Model page in advanced mode changes the model and reasoning effort, adds an 
 
 **Extensions**: the Extensions page in advanced mode lists Worlds on npm with the `cortico-world` keyword; packages in the [official index](https://github.com/Pal-AI-Lab/cortico-extensions) also show tags, votes and comments. After installing, click **Restart process** and enable the World in **World Overview**.
 
-**Updates**: the Windows build and the AppImage download new versions in the background, and Coo asks whether to restart and update. On Mac and with the deb, the line under the version in the settings window links to a newer release to download by hand.
+**Updates**: the Windows build and the AppImage download new versions in the background, and Coo asks whether to restart and update. On Mac and with the deb, the update status beside the version in the title bar links to a newer release to download by hand.
 
 ## Cost and privacy
 

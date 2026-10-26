@@ -1,12 +1,11 @@
 /**
- * The settings window's left rail: the Coopanion mark with the version under it and a new release's
- * link, the button that folds the rail to icons, the pages in their groups (setNav), the button that
+ * The settings window's left rail: the Coopanion mark, the pages in their groups (setNav), the button that
  * switches between the normal and the advanced mode, and the foot (shut down, pause/resume with the
  * run state in words, the avatar and the bot's name). The normal mode shows only the entries marked
  * basic; switching fades the others in or out.
  *
- * Folded, the rail shows icons only and a tooltip names what is under the pointer. Below 1000px
- * wide it starts folded unless it was set by hand (kept in the memo); below 720px it opens over the
+ * Folded, the rail shows icons only and a tooltip names what is under the pointer. At 1000px or less
+ * it folds when the width crosses the breakpoint; below 720px it opens over the
  * page, with a backdrop that folds it again. Pause and resume, shutting down and renaming go to Core
  * through `/api/run/*` and `/api/config`.
  */
@@ -18,7 +17,6 @@ import { icon, type ConsoleIconName } from '../base/ui/icons.ts';
 import { lampRow, paintLamps } from '../base/ui/lamp.ts';
 import type { ConsoleMode } from '../features/mode.ts';
 import { onNameSaved } from '../features/bot-name.ts';
-import { mountRelease } from '../features/release.ts';
 import { sidebarBrand } from './brand.ts';
 import { L } from '../strings.ts';
 import { createAvatarControl } from './avatar.ts';
@@ -62,6 +60,8 @@ export interface RailDeps {
 
 export interface Rail {
   readonly el: HTMLElement;
+  /** Mounted in the title bar; its state and click handler belong to the rail. */
+  readonly toggle: HTMLButtonElement;
   /** Goes right after `el`: on a narrow window it covers the page while the rail is open. */
   readonly backdrop: HTMLElement;
   setRoute(route: Route): void;
@@ -82,31 +82,17 @@ export function createRail(deps: RailDeps): Rail {
 
   /* ---------- brand ---------- */
   const brand = ui.h('div', 'brand');
-  // the logo, the version centred under it (and a new release's link when there is one), then the collapse button
-  const meta = ui.h('div', 'companion-brand-meta');
-  // a new release's link sits in a box that folds to nothing with the rail (its row eases from 1fr to 0fr), so the
-  // button under it goes back up to where it is with no link, whatever height the link has
-  const release = ui.h('div', 'companion-release');
-  const releaseInner = ui.h('div');
-  release.append(releaseInner);
-  const tools = ui.h('div', 'companion-sidebar-tools');
   const toggle = ui.h('button', 'companion-sidebar-toggle');
   toggle.type = 'button';
   toggle.setAttribute('aria-controls', 'companion-navigation');
   toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path class="companion-sidebar-chevron" d="m16 9-3 3 3 3"/></svg>';
-  // the words only show on the open rail, where the button folds it: they stay put while the rail folds
-  toggle.append(ui.h('span', 'lbl', L.collapseSidebar));
-  tools.append(toggle);
-  brand.append(sidebarBrand(doc), meta, tools);
-  mountRelease(doc, meta, (hint) => {
-    releaseInner.append(hint);
-    meta.append(release);
-  }, signal);
+  brand.append(sidebarBrand(doc));
 
   /* ---------- pages ---------- */
   const nav = ui.h('nav', 'stack');
   nav.id = 'companion-navigation';
   nav.setAttribute('aria-label', S.navAria);
+  nav.addEventListener('scroll', () => nav.classList.toggle('is-scrolled', nav.scrollTop > 0), { signal });
   let entries: Array<{ item: HTMLAnchorElement; segments: readonly string[]; pageId?: string; lamps?: HTMLSpanElement }> = [];
   let lamps: Record<string, readonly WebUiLamp[]> = {};
   let navLife: AbortController | null = null;
@@ -416,8 +402,7 @@ export function createRail(deps: RailDeps): Rail {
 
   const compact = win.matchMedia('(max-width: 1000px)');
   const narrow = win.matchMedia('(max-width: 720px)');
-  const stored = deps.memo.get<unknown>(COLLAPSED_KEY, null);
-  let preference = typeof stored === 'boolean' ? stored : null;
+  let preference = deps.memo.get<unknown>(COLLAPSED_KEY, null) === true;
   let collapsed = false;
 
   /**
@@ -462,12 +447,11 @@ export function createRail(deps: RailDeps): Rail {
     toggle.setAttribute('aria-expanded', String(!collapsed));
     toggle.setAttribute('aria-label', collapsed ? L.expandSidebar : L.collapseSidebar);
     toggle.title = collapsed ? L.expandSidebar : L.collapseSidebar;
-    meta.inert = collapsed;
     backdrop.hidden = collapsed || !narrow.matches;
     deps.content.inert = !backdrop.hidden;
     hideTip();
   };
-  const resize = (): void => render(narrow.matches || (preference ?? compact.matches));
+  const resize = (): void => render(compact.matches || preference);
   toggle.addEventListener('click', () => {
     if (!narrow.matches) {
       preference = !collapsed;
@@ -489,7 +473,7 @@ export function createRail(deps: RailDeps): Rail {
   narrow.addEventListener('change', resize, { signal });
 
   const showTip = (event: Event): void => {
-    const target = (event.target as Element).closest<HTMLElement>('a.navitem, .companion-mode, .rail-action, .rail-avatar, .companion-sidebar-toggle');
+    const target = (event.target as Element).closest<HTMLElement>('a.navitem, .companion-mode, .rail-action, .rail-avatar');
     if (!collapsed || !target || target.hidden) return;
     const label = target.getAttribute('aria-label') || target.title;
     if (!label) return;
@@ -519,6 +503,7 @@ export function createRail(deps: RailDeps): Rail {
 
   return {
     el,
+    toggle,
     backdrop,
     setRoute(next: Route): void {
       route = next;

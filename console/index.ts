@@ -48,6 +48,8 @@ import { voicePage } from './features/voice/index.ts';
 import { createRail, type NavGroup, type NavItem } from './rail/index.ts';
 import { S as R } from './rail/strings.ts';
 import { L } from './strings.ts';
+import { createTitlebar } from './titlebar.ts';
+import { watchPageScrollInset } from './base/ui/page.ts';
 
 /** One entry of the rail and the page it mounts. */
 interface Entry {
@@ -124,6 +126,7 @@ export function boot(doc: Document = document): Disposable {
   });
   doc.body.insertBefore(rail.el, doc.body.firstChild);
   rail.el.after(rail.backdrop);
+  doc.body.prepend(createTitlebar(doc, rail.toggle, life.signal));
 
   const available = (e: Entry) => !e.needsAny?.length || e.needsAny.some((k) => capabilities[k] === true);
   const item = (e: Entry): NavItem => ({ label: e.label, ...(e.icon ? { icon: e.icon } : {}), segments: [e.route], basic: e.basic });
@@ -183,6 +186,7 @@ export function boot(doc: Document = document): Disposable {
     const slot = doc.createElement('div');
     slot.className = `featureslot featureslot-${entry.route}`;
     slotHost.append(slot);
+    watchPageScrollInset(slot, lifecycle.signal);
     const pageUi = createConsoleUi({ memo, overlayHost: doc.body, signal: lifecycle.signal, doc });
     const ctx: FeatureContext = {
       root: slot, lifecycle, signal: lifecycle.signal, ui: pageUi, router, route, capabilities, onError, consolePageHost,

@@ -1,9 +1,5 @@
-/**
- * 字标下面那一行:当前版本与项目地址;下面再多一行更新的情况。
- * 能自己更新的版本(app/updater.cjs,经 settings-preload.cjs 的 `coopanionUpdate`)显示更新器走到哪一步:正在下载、
- * 已下载(退出时安装),下载失败时才给去 Release 页的链接。其余版本(macOS、deb、从源码运行)在 GitHub 上最新的正式
- * Release 比当前版本新时给去下载的链接，查询失败就只显示当前版本。Steam 版由 Steam 更新，都不显示。
- * 版本号与渠道由 scripts/stage.ts 写进 app-version.ts。
+/** Title-bar version link and update status. Native builds use the updater bridge;
+ * other builds check GitHub. Steam manages its own updates.
  */
 import { APP_CHANNEL, APP_VERSION } from '../app-version.ts';
 import { S } from './strings.ts';
@@ -40,7 +36,7 @@ function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-/** 一次启动只查一次;左栏换模式重建时复用同一个结果。 */
+/** Share one release check across mounts. */
 let pending: Promise<ReleaseUpdate | null> | null = null;
 
 function checkRelease(): Promise<ReleaseUpdate | null> {
@@ -66,30 +62,33 @@ function link(doc: Document, className: string, text: string, href: string): HTM
   return a;
 }
 
-/** 更新器这一步在版本行下显示的样子：失败时是去 Release 页的链接，其余是一行字。 */
-function stepHint(doc: Document, step: UpdateStep): HTMLElement {
-  if (step.phase === 'failed') return link(doc, 'release-hint', S.updateFailed(step.version), RELEASES_URL);
-  const hint = doc.createElement('span');
-  hint.className = 'release-hint';
-  hint.textContent = step.phase === 'downloading' ? S.updateDownloading(step.version) : S.updateReady(step.version);
-  return hint;
+/** The short status line; the full sentence is its tooltip, which screen readers read after the line. */
+function hint(doc: Document, text: string, detail: string, href?: string): HTMLElement {
+  const el = href ? link(doc, 'release-hint', text, href) : Object.assign(doc.createElement('span'), { className: 'release-hint', textContent: text });
+  el.title = detail;
+  return el;
 }
 
-/** 把版本行放进字标容器;有更新的情况时把那一行交给 `onUpdate`,之后的变化原地替换。 */
-export function mountRelease(doc: Document, brand: Element, onUpdate: (hint: HTMLElement) => void, signal: AbortSignal): void {
-  const repo = link(doc, 'companion-version', `v${APP_VERSION} · GitHub`, REPO_URL);
+function stepHint(doc: Document, { phase, version }: UpdateStep): HTMLElement {
+  if (phase === 'failed') return hint(doc, S.updateFailedShort(version), S.updateFailed(version), RELEASES_URL);
+  return phase === 'downloading'
+    ? hint(doc, S.updateDownloadingShort(version), S.updateDownloading(version))
+    : hint(doc, S.updateReadyShort(version), S.updateReady(version));
+}
+
+export function mountRelease(doc: Document, container: Element, signal: AbortSignal): void {
+  const repo = link(doc, 'companion-version', `v${APP_VERSION} - GitHub`, REPO_URL);
   repo.title = S.repoHint;
-  brand.appendChild(repo);
+  container.appendChild(repo);
   if (APP_CHANNEL === 'steam') return;
+  const status = doc.createElement('div');
+  status.className = 'companion-update';
+  status.setAttribute('role', 'status');
+  container.append(status);
   const updater = doc.defaultView?.coopanionUpdate;
   if (updater) {
-    let shown: HTMLElement | null = null;
     const show = (step: UpdateStep | null) => {
-      if (!step) return;
-      const hint = stepHint(doc, step);
-      if (shown) shown.replaceWith(hint);
-      else onUpdate(hint);
-      shown = hint;
+      if (step) status.replaceChildren(stepHint(doc, step));
     };
     show(updater.step());
     const stop = updater.onStep(show);
@@ -98,6 +97,6 @@ export function mountRelease(doc: Document, brand: Element, onUpdate: (hint: HTM
   }
   void checkRelease().then((update) => {
     if (signal.aborted || !update) return;
-    onUpdate(link(doc, 'release-hint', S.update(update.version), update.url));
+    status.append(hint(doc, S.updateShort(update.version), S.update(update.version), update.url));
   });
 }
