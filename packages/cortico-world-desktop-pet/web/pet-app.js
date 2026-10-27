@@ -18,6 +18,7 @@ import { COO_CSS, PALETTES, mini, normalizeSkin, skinCss } from './coo/coo.js';
 import { loadBody } from './body-host.js';
 import { accentColors, announcePainted, bubbleCss, dressFloor, glowColor, lightWall, modeButton, setGlow } from './stage.js';
 import { bindAppearance } from './appearance.js';
+import { createMic } from './mic.js';
 
 const $ = (s) => document.querySelector(s);
 const host = window.petHost || null;
@@ -1123,50 +1124,7 @@ function stepStatus() {
 }
 
 /* ---------- microphone: open while `prefs.mic`, which the World turns on and off with a held talk key in hold mode ---------- */
-let mic = null;
-async function startMic() {
-  if (mic) return;
-  const opening = mic = { starting: true };
-  // 拿到一半就失败时也要停麦关声卡,否则录音指示灯常亮到页面刷新
-  let stream = null, ctx = null;
-  try {
-    const audio = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-    if (prefs.micDevice) audio.deviceId = { exact: prefs.micDevice };
-    stream = await navigator.mediaDevices.getUserMedia({ audio });
-    ctx = new AudioContext({ sampleRate: 16000 });
-    await ctx.audioWorklet.addModule('/web/mic-worklet.js');
-    const src = ctx.createMediaStreamSource(stream);
-    const node = new AudioWorkletNode(ctx, 'pet-mic');
-    node.port.onmessage = (e) => { if (ws && ws.readyState === 1) ws.send(e.data); };
-    src.connect(node);
-    // closed, or closed and opened again, while this one was opening
-    if (!prefs.mic || mic !== opening) { stream.getTracks().forEach((t) => t.stop()); ctx.close(); if (mic === opening) mic = null; return; }
-    mic = { stream, ctx, node };
-    send({ t: 'mic', state: 'on', detail: stream.getAudioTracks()[0]?.label || null });
-    void reportDevices();
-  } catch (err) {
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-    if (ctx) ctx.close();
-    if (mic === opening) mic = null;
-    send({ t: 'mic', state: err && err.name === 'NotAllowedError' ? 'denied' : 'error', detail: String(err && err.message || err) });
-    // access was granted, so the labels are readable: list the devices, another one may open where this one did not
-    if (err?.name !== 'NotAllowedError') void reportDevices();
-  }
-}
-/** Device labels are readable only after microphone access was granted (an open that failed for another reason counts). */
-async function reportDevices() {
-  const all = await navigator.mediaDevices.enumerateDevices();
-  send({ t: 'devices', list: all.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d) => ({ id: d.deviceId, label: d.label })) });
-}
-navigator.mediaDevices?.addEventListener('devicechange', () => { if (mic && !mic.starting) void reportDevices(); });
-function stopMic() {
-  const m = mic;
-  mic = null;
-  if (!m || m.starting) return;
-  m.stream.getTracks().forEach((t) => t.stop());
-  m.ctx.close();
-  send({ t: 'mic', state: 'off' });
-}
+const { start: startMic, stop: stopMic } = createMic({ prefs, send, sendAudio: (data) => { if (ws && ws.readyState === 1) ws.send(data); } });
 
 /* ---------- actions: the menu's lower zone and the hover buttons draw from one list ---------- */
 const ROAM_ORDER = ['off', 'calm', 'free'];
