@@ -1,8 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import { decodedFileIds } from './tests/vitest-file-ids.ts';
 
 // Run bundled World regressions against the framework pinned by this application.
 export default defineConfig({
+  plugins: [decodedFileIds],
   resolve: { alias: [{ find: /^cortico\//, replacement: fileURLToPath(new URL('./vendor/cortico/src/', import.meta.url)) }] },
   test: {
     include: ['packages/cortico-world-desktop-pet/tests/**/*.test.ts'],
