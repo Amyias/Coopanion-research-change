@@ -22,15 +22,15 @@
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
+import { runCommand } from './run-command.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const OUT = join(ROOT, 'build', 'app');
 const run = (cmd: string, args: string[], cwd: string) => {
-  const r = spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
-  if (r.status !== 0) process.exit(r.status ?? 1);
+  const status = runCommand(cmd, args, cwd);
+  if (status !== 0) process.exit(status);
 };
 
 const ARCH = process.env.PACK_ARCH || process.arch;
