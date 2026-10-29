@@ -19,8 +19,8 @@ files:
 # latest-linux.yml next to the installers (and app-update.yml into the app), which the release workflow uploads
 publish:
   provider: github
-  owner: Pal-AI-Lab
-  repo: Coopanion
+  owner: Amyias
+  repo: Coopanion-research-change
 win:
   target:
     - target: nsis
