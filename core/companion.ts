@@ -10,6 +10,8 @@
  * The `coopanion` World (`notice.ts`) tells Coo what the app has to say: the release notes after
  * an update, and the settings the person changes. The `websearch` World is Cortico's: it gives Coo
  * `web_search`, whose results arrive as the tool's output, so answering from them needs no computer use.
+ * The `web-fetch` World (`web-fetch.ts`) adds `web_fetch` for reading one page, through the same
+ * DeepSeek key.
  *
  * The app language (`config.language`, `language.ts`) picks the text people read and the language of
  * what Coo reads: the bundled Worlds' events, receipts and environment prompts, and the seeded persona
@@ -78,6 +80,7 @@ import type { contextStageConfigGroup } from '../vendor/cortico/bots/cormini/per
 import type { CorminiConfig } from '../vendor/cortico/bots/cormini/index.ts';
 import { crashFields, describeEndpoint, publicExtensionName, Telemetry, type Counter } from './telemetry.ts';
 import { AUTO_UPDATE_DEFAULT, autoUpdateProperties, watchAutoUpdate, type UpdateConfig } from './update-settings.ts';
+import { WEB_FETCH_ID, webFetchDefinition } from './web-fetch.ts';
 
 /** The active endpoint's key is set in the process environment or the endpoint's `.env`; a ChatGPT plan's endpoint is signed in. */
 function hasKey(config: CoreConfig): boolean {
@@ -504,7 +507,7 @@ export async function main(): Promise<void> {
   let coo: CoopanionPersona | null = null;
   const definitionBase: BotDefinition<CorminiConfig & UpdateConfig> = {
     ...base.definition,
-    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id, WEBSEARCH.id],
+    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id, WEBSEARCH.id, WEB_FETCH_ID],
     // Cormini's tools under the same names; the memory differs by PARTNER.md and the version history
     describe: {
       tools: base.definition.describe?.tools ?? [],
@@ -551,7 +554,7 @@ export async function main(): Promise<void> {
       };
     },
   };
-  const bundled = [CONSOLE, DESKTOP_PET, NOTICE, WEBSEARCH] as WorldDefinition<WorldSection>[];
+  const bundled = [CONSOLE, DESKTOP_PET, NOTICE, WEBSEARCH, webFetchDefinition()] as WorldDefinition<WorldSection>[];
 
   // extension providers must be registered before endpoints are resolved
   const extensions = await loadExtensions(repoRoot(), {
