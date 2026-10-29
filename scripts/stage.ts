@@ -2,8 +2,8 @@
  * Builds what the app runs from source:
  *
  * 1. `build/cortico/`: `vendor/cortico` without the built-in platform Worlds (minecraft, qq, bilibili,
- *    websearch, the WebUI fixture), the llamacpp provider, the other bots, and repository tooling
- *    (`console` stays: core/companion.ts mounts it). Its `src/web/client` is vendor's as it is.
+ *    the WebUI fixture), the llamacpp provider, the other bots, and repository tooling
+ *    (`console` and `websearch` stay: core/companion.ts mounts both). Its `src/web/client` is vendor's as it is.
  *    Cortico's own `buildWeb` builds its WebUI and the panel bundles of the Persona and the
  *    built-in Worlds, which the settings window loads through the manifest; its stylesheet is built
  *    with Tailwind;
@@ -36,7 +36,7 @@ const DROP = new Set([
   'runtime', 'templates', 'patches', 'scripts', 'bin', 'CortiV-DataAnalysis', 'assets',
   'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json', 'tsconfig.web.json', 'vitest.config.ts', 'start.bat', 'start.sh',
   'AGENTS.md', 'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'SECURITY.md', '.env', '.gitignore', '.gitattributes',
-  'src/worlds/minecraft', 'src/worlds/qq', 'src/worlds/bilibili', 'src/worlds/websearch', 'src/worlds/webui-fixture',
+  'src/worlds/minecraft', 'src/worlds/qq', 'src/worlds/bilibili', 'src/worlds/webui-fixture',
   'src/providers/llamacpp',
   'bots/corti-soulmate', 'bots/cortiv',
 ]);

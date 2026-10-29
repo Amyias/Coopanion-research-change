@@ -38,8 +38,9 @@ export const personaFile = (id: PersonaId, language: Language) => join(SEED_DIR,
  * (`followLanguage`), endpoints of the old `deepseek` module, which now belong
  * to `coo`, a config of computer use as its own World (`worlds.cua`), whose section, whether it was on
  * included, moves to `worlds.desktop-pet.cua`, a config without a computer-use `permission`, which
- * keeps the `ask-each-turn` it had before new installs got `ask-once`, and the keys Cortico 0.2.0 renamed
- * (`moveTerminalToConsole`).
+ * keeps the `ask-each-turn` it had before new installs got `ask-once`, the keys Cortico 0.2.0 renamed
+ * (`moveTerminalToConsole`), and web search switched on for a deployment seeded before the app bundled
+ * the World that offers it.
  */
 export function seed(home: string, language: Language): void {
   const deploy = join(home, DEPLOYMENT);
@@ -60,7 +61,7 @@ export function seed(home: string, language: Language): void {
       activeProvider: endpointName(vendor, region),
       providerSchemaVersion: 3,
       web: { port: CONSOLE_PORT },
-      worlds: { 'desktop-pet': { cua: { permission: CUA_ASK } } },
+      worlds: { 'desktop-pet': { cua: { permission: CUA_ASK } }, websearch: { enabled: true } },
     });
   }
   const configured = appLanguage((JSON.parse(readFileSync(config, 'utf8')) as { language?: unknown }).language);
@@ -72,6 +73,7 @@ export function seed(home: string, language: Language): void {
   if (upgrading) {
     moveCuaIntoPet(config);
     keepCuaAsking(config);
+    enableWebSearch(config);
     moveTerminalToConsole(deploy, config);
   }
 }
@@ -121,6 +123,15 @@ function keepCuaAsking(file: string): void {
   const cua = pet?.cua as Section | undefined;
   if (cua?.permission !== undefined) return;
   config.worlds = { ...config.worlds, 'desktop-pet': { ...pet, cua: { ...cua, permission: OLD_CUA_ASK } } };
+  writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+}
+
+/** A config seeded before the app bundled web search gets it switched on; a section that states `enabled` is the operator's. */
+function enableWebSearch(file: string): void {
+  const config = JSON.parse(readFileSync(file, 'utf8')) as WorldSections;
+  const section = config.worlds?.websearch;
+  if (section?.enabled !== undefined) return;
+  config.worlds = { ...config.worlds, websearch: { ...section, enabled: true } };
   writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
 }
 

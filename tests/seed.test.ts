@@ -25,7 +25,7 @@ describe('first-run seed', () => {
       expect(read(join(home, DEPLOYMENT, 'config.json'))).toMatchObject({ activeProvider: endpoint, language });
       // the next start, in another system language, leaves a new install's language and computer-use asking as seeded
       seed(home, language === 'zh' ? 'en' : 'zh');
-      expect(read(join(home, DEPLOYMENT, 'config.json'))).toMatchObject({ language, worlds: { 'desktop-pet': { cua: { permission: 'ask-once' } } } });
+      expect(read(join(home, DEPLOYMENT, 'config.json'))).toMatchObject({ language, worlds: { 'desktop-pet': { cua: { permission: 'ask-once' } }, websearch: { enabled: true } } });
       expect(read(join(home, 'providers', endpoint, 'config.json'))).toMatchObject({ kind: 'coo', secret: vendor.secret, spec: { model: vendor.model } });
       expect(readFileSync(join(home, DEPLOYMENT, 'workspace', 'CONSTITUTION.md'), 'utf8')).toBe(readFileSync(personaFile('coo', language), 'utf8'));
       expect(readFileSync(join(home, DEPLOYMENT, 'avatar.png')).subarray(1, 4).toString()).toBe('PNG');
@@ -105,7 +105,7 @@ describe('first-run seed', () => {
     writeFileSync(constitution, '# 我自己写的');
     seed(home, 'zh');
     // a config from before new installs got a computer-use `permission` keeps the default it had
-    expect(read(cfg)).toEqual({ displayName: 'mine', worlds: { 'desktop-pet': { cua: { permission: 'ask-each-turn' } } } });
+    expect(read(cfg)).toEqual({ displayName: 'mine', worlds: { 'desktop-pet': { cua: { permission: 'ask-each-turn' } }, websearch: { enabled: true } } });
     expect(readFileSync(constitution, 'utf8')).toBe('# 我自己写的');
   });
 
@@ -116,11 +116,26 @@ describe('first-run seed', () => {
     const cua = { enabled: true, permission: 'never-ask', grantMinutes: 90, screenshot: { quality: 60 } };
     writeFileSync(cfg, JSON.stringify({ displayName: 'mine', worlds: { cua, 'desktop-pet': { roam: 'off' } } }));
     seed(home, 'zh');
-    expect(read(cfg)).toEqual({ displayName: 'mine', worlds: { 'desktop-pet': { roam: 'off', cua } } });
+    expect(read(cfg)).toEqual({ displayName: 'mine', worlds: { 'desktop-pet': { roam: 'off', cua }, websearch: { enabled: true } } });
     // an old config without its asking level keeps the default it had then
     writeFileSync(cfg, JSON.stringify({ worlds: { cua: { enabled: true } } }));
     seed(home, 'zh');
-    expect(read(cfg)).toEqual({ worlds: { 'desktop-pet': { cua: { enabled: true, permission: 'ask-each-turn' } } } });
+    expect(read(cfg)).toEqual({ worlds: { 'desktop-pet': { cua: { enabled: true, permission: 'ask-each-turn' } }, websearch: { enabled: true } } });
+  });
+
+  it('switches web search on for a deployment seeded before it was bundled, and leaves a section the operator wrote alone', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cc-seed-'));
+    seed(home, 'zh');
+    const cfg = join(home, DEPLOYMENT, 'config.json');
+    const seeded = read(cfg) as { worlds: Record<string, unknown> };
+    // a config from before the World was bundled, and one where the person turned it off
+    delete seeded.worlds.websearch;
+    writeFileSync(cfg, JSON.stringify(seeded));
+    seed(home, 'zh');
+    expect(read(cfg)).toMatchObject({ worlds: { websearch: { enabled: true } } });
+    writeFileSync(cfg, JSON.stringify({ ...seeded, worlds: { ...seeded.worlds, websearch: { enabled: false, provider: 'deepseek' } } }));
+    seed(home, 'zh');
+    expect(read(cfg)).toMatchObject({ worlds: { websearch: { enabled: false, provider: 'deepseek' } } });
   });
 
   it('moves the terminal World, its prompt override and the console log level to the names Cortico 0.2.0 gave them', () => {
@@ -133,11 +148,11 @@ describe('first-run seed', () => {
     mkdirSync(join(deploy, 'worlds', 'terminal'), { recursive: true });
     writeFileSync(join(deploy, 'worlds', 'terminal', 'ENV_PROMPT.md'), 'mine');
     seed(home, 'zh');
-    expect(read(cfg)).toEqual({ worlds: { 'desktop-pet': pet, [CONSOLE.id]: { enabled: true, pin: '123456' } }, logging: { file: 'debug', stdout: 'warn' } });
+    expect(read(cfg)).toEqual({ worlds: { 'desktop-pet': pet, [CONSOLE.id]: { enabled: true, pin: '123456' }, websearch: { enabled: true } }, logging: { file: 'debug', stdout: 'warn' } });
     expect(readFileSync(join(deploy, 'worlds', CONSOLE.id, 'ENV_PROMPT.md'), 'utf8')).toBe('mine');
     // a key already under the new name wins over the old one
     writeFileSync(cfg, JSON.stringify({ worlds: { terminal: { enabled: true, pin: '' }, [CONSOLE.id]: { pin: '654321' }, 'desktop-pet': pet }, logging: { console: 'warn', stdout: 'error' } }));
     seed(home, 'zh');
-    expect(read(cfg)).toEqual({ worlds: { [CONSOLE.id]: { enabled: true, pin: '654321' }, 'desktop-pet': pet }, logging: { stdout: 'error' } });
+    expect(read(cfg)).toEqual({ worlds: { [CONSOLE.id]: { enabled: true, pin: '654321' }, 'desktop-pet': pet, websearch: { enabled: true } }, logging: { stdout: 'error' } });
   });
 });

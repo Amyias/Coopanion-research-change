@@ -1,5 +1,5 @@
 /**
- * The app's Core process: Cormini as the Persona, the console, desktop-pet and coopanion Worlds, Coo Pet
+ * The app's Core process: Cormini as the Persona, the console, desktop-pet, coopanion and websearch Worlds, Coo Pet
  * Provider (DeepSeek and the other model services Coo offers) and its `chatgpt` module (a ChatGPT plan,
  * signed in) next to Cortico's built-in providers, and Worlds or providers installed from npm through
  * the console's extension page.
@@ -8,7 +8,8 @@
  * resumes the run, opens the settings window and quits the app, as the console's rail foot does.
  *
  * The `coopanion` World (`notice.ts`) tells Coo what the app has to say: the release notes after
- * an update, and the settings the person changes.
+ * an update, and the settings the person changes. The `websearch` World is Cortico's: it gives Coo
+ * `web_search`, whose results arrive as the tool's output, so answering from them needs no computer use.
  *
  * The app language (`config.language`, `language.ts`) picks the text people read and the language of
  * what Coo reads: the bundled Worlds' events, receipts and environment prompts, and the seeded persona
@@ -60,6 +61,7 @@ import { providerModules, registerProviderModules } from 'cortico/providers/regi
 import { withWorlds, type WorldDefinition, type WorldSection } from 'cortico/world.ts';
 import { InstanceLockedError } from 'cortico/core/instance-lock.ts';
 import { CONSOLE } from 'cortico/worlds/console/definition.ts';
+import { WEBSEARCH } from 'cortico/worlds/websearch/definition.ts';
 import { desktopPetDefinition, figurePacks, type DesktopPetWorld, type PetDialogHandle } from 'cortico-world-desktop-pet';
 import COO, { CHATGPT, CHATGPT_PROVIDER, signedIn, usageLimited, vendorOf } from 'cortico-provider-coo';
 import { appWebUiAsset, bundledWebUiAssets } from './bundled-panels.ts';
@@ -502,7 +504,7 @@ export async function main(): Promise<void> {
   let coo: CoopanionPersona | null = null;
   const definitionBase: BotDefinition<CorminiConfig & UpdateConfig> = {
     ...base.definition,
-    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id],
+    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id, WEBSEARCH.id],
     // Cormini's tools under the same names; the memory differs by PARTNER.md and the version history
     describe: {
       tools: base.definition.describe?.tools ?? [],
@@ -549,7 +551,7 @@ export async function main(): Promise<void> {
       };
     },
   };
-  const bundled = [CONSOLE, DESKTOP_PET, NOTICE] as WorldDefinition<WorldSection>[];
+  const bundled = [CONSOLE, DESKTOP_PET, NOTICE, WEBSEARCH] as WorldDefinition<WorldSection>[];
 
   // extension providers must be registered before endpoints are resolved
   const extensions = await loadExtensions(repoRoot(), {
