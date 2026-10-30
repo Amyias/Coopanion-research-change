@@ -1,7 +1,8 @@
 /** The tools of the `web-fetch` World: `web_fetch` reads one page as Markdown through DeepSeek's Fetch API. */
 import type { ToolDef } from 'cortico/core/types.ts';
-import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from './config.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_PEXELS_SECRET, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET } from './config.ts';
 import { ImageError, readImage, type ImageFailure, type ImageResult } from './image.ts';
+import { ImageSearchError, searchImages, type ImageHit } from './image-search.ts';
 
 /** The API refuses a longer URL, and one with credentials in it. */
 const URL_MAX = 8192;
@@ -12,9 +13,13 @@ export interface WebFetchOptions {
   timeoutMs: number;
   maxChars: number;
   imageMaxBytes: number;
+  maxImageResults: number;
   secret(name: string): string;
   /** Tests read from a server on this machine; the definition never sets it. */
   allowLocal?: boolean;
+  /** Tests point a provider at a local server; the definition never sets them. */
+  pexelsBase?: string;
+  pixabayBase?: string;
 }
 
 const URL_PARAMETERS = {
@@ -37,12 +42,27 @@ export const WEB_FETCH_TOOL_DECL: Omit<ToolDef, 'handler'> = {
 export const WEB_FETCH_IMAGE_TOOL_DECL: Omit<ToolDef, 'handler'> = {
   name: 'web_fetch_image',
   description:
-    'Download one image from a URL, so the person can see it and you can look at it. Use it when they ask for a picture from the web. The image comes back as an attachment; show it with pet_say. One image per call.',
+    'Download one image from a direct URL, so the person can see it and you can look at it. Get the URL from web_search_images or from the person. The image comes back as an attachment; show it with pet_say. One image per call.',
   tags: ['read'],
   parameters: URL_PARAMETERS,
 };
 
-export const WEB_FETCH_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [WEB_FETCH_TOOL_DECL, WEB_FETCH_IMAGE_TOOL_DECL];
+export const WEB_FETCH_SEARCH_IMAGES_TOOL_DECL: Omit<ToolDef, 'handler'> = {
+  name: 'web_search_images',
+  description:
+    'Find pictures on the web and return their direct URLs, one per line. Hand one of those URLs to web_fetch_image to look at the picture. Use it when the person asks for a picture of something.',
+  tags: ['read'],
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      query: { type: 'string', minLength: 1, maxLength: 200, description: 'What the picture should show, in a few words.' },
+    },
+    required: ['query'],
+  },
+};
+
+export const WEB_FETCH_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [WEB_FETCH_TOOL_DECL, WEB_FETCH_IMAGE_TOOL_DECL, WEB_FETCH_SEARCH_IMAGES_TOOL_DECL];
 
 class FetchError extends Error {
   readonly status: number;
@@ -178,6 +198,35 @@ export function imageFetchTool(opts: WebFetchOptions): ToolDef {
         text: `web image: ${url} · ${image.mime} · ${sizeOf(image.size)}`,
         blobs: [{ bytes: image.bytes, mime: image.mime, name, fallbackText: `an image from ${parsed.host}` }],
       };
+    },
+  };
+}
+
+/** Picture addresses for a query, one line each, ready to hand to `web_fetch_image`. */
+export function searchImagesTool(opts: WebFetchOptions): ToolDef {
+  return {
+    ...WEB_FETCH_SEARCH_IMAGES_TOOL_DECL,
+    handler: async (args) => {
+      const query = typeof args.query === 'string' ? args.query.trim() : '';
+      if (!query || query.length > 200) return '[bad input] query must be 1 to 200 characters';
+      let hits: ImageHit[];
+      try {
+        hits = await searchImages(query, {
+          maxResults: opts.maxImageResults,
+          timeoutMs: opts.timeoutMs,
+          pexelsKey: opts.secret(WEB_FETCH_PEXELS_SECRET).trim(),
+          pixabayKey: opts.secret(WEB_FETCH_PIXABAY_SECRET).trim(),
+          ...(opts.pexelsBase ? { pexelsBase: opts.pexelsBase } : {}),
+          ...(opts.pixabayBase ? { pixabayBase: opts.pixabayBase } : {}),
+        });
+      } catch (error) {
+        if (error instanceof ImageSearchError) {
+          if (error.kind === 'no-provider') return `[tool failed] image search needs ${WEB_FETCH_PEXELS_SECRET} or ${WEB_FETCH_PIXABAY_SECRET}`;
+          if (error.kind === 'no-results') return `[no results] ${error.message}`;
+        }
+        return `[fetch failed] ${error instanceof Error ? error.message : String(error)}`;
+      }
+      return [`web images: ${query}`, ...hits.map((hit, index) => `${index + 1}. ${hit.title} — ${hit.url}${hit.credit ? ` (by ${hit.credit})` : ''}`)].join('\n');
     },
   };
 }

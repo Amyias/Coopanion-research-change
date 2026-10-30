@@ -6,9 +6,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from '../core/web-fetch/config.ts';
+import {
+  WEB_FETCH_DEFAULTS,
+  WEB_FETCH_PEXELS_SECRET,
+  WEB_FETCH_PIXABAY_SECRET,
+  WEB_FETCH_SECRET,
+} from '../core/web-fetch/config.ts';
 import { WEB_FETCH } from '../core/web-fetch/definition.ts';
-import { imageFetchTool, webFetchTool } from '../core/web-fetch/tools.ts';
+import { imageFetchTool, searchImagesTool, webFetchTool } from '../core/web-fetch/tools.ts';
 
 const closing: Array<() => void> = [];
 afterEach(() => { for (const close of closing.splice(0)) close(); });
@@ -45,26 +50,51 @@ async function serveGet(handler: (path: string, res: ServerResponse) => void): P
   return { origin: `http://127.0.0.1:${port}`, hits };
 }
 
-function tool(baseUrl: string, overrides: { maxChars?: number; imageMaxBytes?: number; secret?: string } = {}) {
-  return webFetchTool({
-    baseUrl,
-    timeoutMs: 5000,
-    maxChars: overrides.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-    imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
-    secret: (name) => (name === WEB_FETCH_SECRET ? (overrides.secret ?? 'test-key') : ''),
-  });
+const options = (overrides: {
+  maxChars?: number;
+  imageMaxBytes?: number;
+  maxImageResults?: number;
+  secret?: string;
+  allowLocal?: boolean;
+  pexelsKey?: string;
+  pixabayKey?: string;
+  pexelsBase?: string;
+  pixabayBase?: string;
+} = {}) => ({
+  baseUrl: '',
+  timeoutMs: 5000,
+  maxChars: overrides.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
+  imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
+  maxImageResults: overrides.maxImageResults ?? WEB_FETCH_DEFAULTS.maxImageResults,
+  secret: (name: string) => {
+    if (name === WEB_FETCH_SECRET) return overrides.secret ?? 'test-key';
+    if (name === WEB_FETCH_PEXELS_SECRET) return overrides.pexelsKey ?? '';
+    if (name === WEB_FETCH_PIXABAY_SECRET) return overrides.pixabayKey ?? '';
+    return '';
+  },
+  allowLocal: overrides.allowLocal !== false,
+  ...(overrides.pexelsBase ? { pexelsBase: overrides.pexelsBase } : {}),
+  ...(overrides.pixabayBase ? { pixabayBase: overrides.pixabayBase } : {}),
+});
+
+function tool(baseUrl: string, overrides: { maxChars?: number; secret?: string } = {}) {
+  return webFetchTool({ ...options(overrides), baseUrl });
 }
 
-/** The image tool's options: it reads from the same local server the page tests use. */
+/** The image tools' options: they read from the same local server the page tests use. */
 function imageTool(overrides: { imageMaxBytes?: number; allowLocal?: boolean } = {}) {
-  return imageFetchTool({
-    baseUrl: '',
-    timeoutMs: 5000,
-    maxChars: WEB_FETCH_DEFAULTS.maxChars,
-    imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
-    secret: () => 'test-key',
-    ...(overrides.allowLocal === false ? {} : { allowLocal: true }),
-  });
+  return imageFetchTool(options(overrides));
+}
+
+/** The search tool's options: a provider base points at a local server, the keys are scripted. */
+function searchTool(overrides: {
+  pexelsKey?: string;
+  pixabayKey?: string;
+  pexelsBase?: string;
+  pixabayBase?: string;
+  maxImageResults?: number;
+} = {}) {
+  return searchImagesTool(options(overrides));
 }
 
 describe('web_fetch', () => {
@@ -162,12 +192,88 @@ describe('web_fetch_image', () => {
   });
 });
 
+describe('web_search_images', () => {
+  it('returns picture addresses and their credits from Pexels', async () => {
+    const { origin, hits } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        photos: [
+          { alt: 'a corgi on grass', photographer: 'Ann', src: { large: 'https://images.example.com/corgi.jpg' } },
+          { alt: '', photographer: '', src: { large: 'https://images.example.com/two.jpg' } },
+        ],
+      }));
+    });
+    const out = await searchTool({ pexelsKey: 'k', pexelsBase: origin }).handler({ query: 'corgi' }, {} as never);
+    expect(out).toBe([
+      'web images: corgi',
+      '1. a corgi on grass — https://images.example.com/corgi.jpg (by Ann)',
+      '2. a picture — https://images.example.com/two.jpg',
+    ].join('\n'));
+    expect(hits[0]).toContain('query=corgi');
+  });
+
+  it('falls back to Pixabay when only its key is set', async () => {
+    const { origin, hits } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hits: [{ tags: 'corgi puppy', user: 'Bob', largeImageURL: 'https://cdn.example.com/x.jpg' }] }));
+    });
+    const out = await searchTool({ pixabayKey: 'k', pixabayBase: origin }).handler({ query: 'corgi' }, {} as never);
+    expect(out).toBe('web images: corgi\n1. corgi puppy — https://cdn.example.com/x.jpg (by Bob)');
+    expect(hits[0]).toContain('key=k');
+  });
+
+  it('prefers Pexels when both keys are set', async () => {
+    let pixabayAsked = false;
+    const pexels = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ photos: [{ alt: 'a corgi', photographer: 'Ann', src: { large: 'https://images.example.com/a.jpg' } }] }));
+    });
+    const pixabay = await serveGet((_path, res) => {
+      pixabayAsked = true;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hits: [] }));
+    });
+    await searchTool({ pexelsKey: 'p', pixabayKey: 'q', pexelsBase: pexels.origin, pixabayBase: pixabay.origin })
+      .handler({ query: 'corgi' }, {} as never);
+    expect(pixabayAsked).toBe(false);
+  });
+
+  it('says which keys it needs when neither is set', async () => {
+    expect(await searchTool().handler({ query: 'corgi' }, {} as never))
+      .toBe('[tool failed] image search needs PEXELS_API_KEY or PIXABAY_API_KEY');
+  });
+
+  it('reports an empty answer as nothing found', async () => {
+    const { origin } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ photos: [] }));
+    });
+    expect(await searchTool({ pexelsKey: 'k', pexelsBase: origin }).handler({ query: 'nonexistent' }, {} as never))
+      .toBe('[no results] nothing found for "nonexistent"');
+  });
+
+  it('names the provider status when it refuses the key', async () => {
+    const { origin } = await serveGet((_path, res) => {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 401 }));
+    });
+    expect(await searchTool({ pexelsKey: 'bad', pexelsBase: origin }).handler({ query: 'corgi' }, {} as never))
+      .toBe('[fetch failed] HTTP 401');
+  });
+
+  it('refuses an empty query', async () => {
+    for (const query of ['', 'x'.repeat(201)]) {
+      expect(await searchTool().handler({ query }, {} as never)).toBe('[bad input] query must be 1 to 200 characters');
+    }
+  });
+});
+
 describe('the web-fetch World', () => {
   it('mounts both tools and describes them for the WebUI', () => {
     const world = WEB_FETCH.create({ cfg: { ...WEB_FETCH_DEFAULTS }, secret: () => 'test-key' } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
     expect(world.id).toBe(WEB_FETCH.id);
-    expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image']);
-    expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image']);
+    expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image', 'web_search_images']);
+    expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image', 'web_search_images']);
     expect(WEB_FETCH.defaults()).toEqual(WEB_FETCH_DEFAULTS);
   });
 });

@@ -17,6 +17,7 @@ const DESCRIBE: WorldDescribe = {
   tools: describeTools(WEB_FETCH_TOOL_DECLS, {
     web_fetch: { zh: '把指定网页的正文按 Markdown 读回来。', en: 'Reads one page as Markdown.' },
     web_fetch_image: { zh: '按 URL 取回一张网图，作为附件交给 Bot。', en: 'Downloads one image from a URL as an attachment.' },
+    web_search_images: { zh: '按关键词搜图，返回图片直链。', en: 'Finds picture URLs for a query.' },
   }),
   events: [],
 };
@@ -31,6 +32,7 @@ export const WEB_FETCH: WorldDefinition<WebFetchConfigSection> = {
       timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
       maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
       imageMaxBytes: ctx.cfg.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
+      maxImageResults: ctx.cfg.maxImageResults ?? WEB_FETCH_DEFAULTS.maxImageResults,
       secret: (name) => ctx.secret(name),
     }),
   describe: DESCRIBE,

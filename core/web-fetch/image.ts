@@ -60,7 +60,7 @@ async function assertPublicHost(url: URL): Promise<void> {
 }
 
 /** `fetch` reports a failed connection as "fetch failed"; the code behind it is what a receipt needs. */
-function reasonOf(error: unknown): string {
+export function reasonOf(error: unknown): string {
   const cause = (error as { cause?: { code?: unknown; message?: unknown } } | null)?.cause;
   const code = typeof cause?.code === 'string' ? cause.code : '';
   const detail = typeof cause?.message === 'string' ? cause.message : '';
