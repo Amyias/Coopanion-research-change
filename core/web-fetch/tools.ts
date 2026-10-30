@@ -1,6 +1,7 @@
 /** The tools of the `web-fetch` World: `web_fetch` reads one page as Markdown through DeepSeek's Fetch API. */
 import type { ToolDef } from 'cortico/core/types.ts';
 import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from './config.ts';
+import { ImageError, readImage, type ImageFailure, type ImageResult } from './image.ts';
 
 /** The API refuses a longer URL, and one with credentials in it. */
 const URL_MAX = 8192;
@@ -10,25 +11,38 @@ export interface WebFetchOptions {
   baseUrl: string;
   timeoutMs: number;
   maxChars: number;
+  imageMaxBytes: number;
   secret(name: string): string;
+  /** Tests read from a server on this machine; the definition never sets it. */
+  allowLocal?: boolean;
 }
 
-export const WEB_FETCH_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
-  {
-    name: 'web_fetch',
-    description:
-      'Read one web page as Markdown. Use it when the person hands over a link or a search result needs its full text; web_search results usually carry enough summary on their own. One page per call.',
-    tags: ['read'],
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        url: { type: 'string', minLength: 1, maxLength: URL_MAX, description: 'An absolute http or https URL with a host.' },
-      },
-      required: ['url'],
-    },
+const URL_PARAMETERS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    url: { type: 'string', minLength: 1, maxLength: URL_MAX, description: 'An absolute http or https URL with a host.' },
   },
-];
+  required: ['url'],
+} as const;
+
+export const WEB_FETCH_TOOL_DECL: Omit<ToolDef, 'handler'> = {
+  name: 'web_fetch',
+  description:
+    'Read one web page as Markdown. Use it when the person hands over a link or a search result needs its full text; web_search results usually carry enough summary on their own. One page per call.',
+  tags: ['read'],
+  parameters: URL_PARAMETERS,
+};
+
+export const WEB_FETCH_IMAGE_TOOL_DECL: Omit<ToolDef, 'handler'> = {
+  name: 'web_fetch_image',
+  description:
+    'Download one image from a URL, so the person can see it and you can look at it. Use it when they ask for a picture from the web. The image comes back as an attachment; show it with pet_say. One image per call.',
+  tags: ['read'],
+  parameters: URL_PARAMETERS,
+};
+
+export const WEB_FETCH_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [WEB_FETCH_TOOL_DECL, WEB_FETCH_IMAGE_TOOL_DECL];
 
 class FetchError extends Error {
   readonly status: number;
@@ -37,6 +51,14 @@ class FetchError extends Error {
     this.status = status;
   }
 }
+
+/** The bracket each refusal opens with, so a receipt says at once which way the call failed. */
+const IMAGE_FAILURE: Record<ImageFailure, string> = {
+  blocked: 'not allowed',
+  fetch: 'fetch failed',
+  'not-image': 'not an image',
+  'too-large': 'too large',
+};
 
 const retryable = (status: number): boolean => status === 408 || status === 429 || status >= 500;
 const statusOf = (body: string): string => {
@@ -104,7 +126,7 @@ async function fetchPage(opts: WebFetchOptions, key: string, url: string): Promi
 /** The tool, with everything it needs handed in: the tests point it at a local server and a scripted secret. */
 export function webFetchTool(opts: WebFetchOptions): ToolDef {
   return {
-    ...WEB_FETCH_TOOL_DECLS[0],
+    ...WEB_FETCH_TOOL_DECL,
     handler: async (args) => {
       const url = fetchableUrl(typeof args.url === 'string' ? args.url.trim() : '');
       if (!url) return '[bad input] url must be an absolute http or https URL with a host and no credentials';
@@ -121,6 +143,41 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
         ? `${page.content.slice(0, opts.maxChars)}\n…(truncated: ${page.content.length} characters in all)`
         : page.content;
       return [`web_fetch: ${url}`, page.title || '(untitled)', '', content].join('\n');
+    },
+  };
+}
+
+/** The size the receipt states, in the unit a person reads at a glance. */
+function sizeOf(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+/** One image in, one attachment out; a refusal states what the answer was instead. */
+export function imageFetchTool(opts: WebFetchOptions): ToolDef {
+  return {
+    ...WEB_FETCH_IMAGE_TOOL_DECL,
+    handler: async (args) => {
+      const url = fetchableUrl(typeof args.url === 'string' ? args.url.trim() : '');
+      if (!url) return '[bad input] url must be an absolute http or https URL with a host and no credentials';
+      let image: ImageResult;
+      try {
+        image = await readImage(url, {
+          timeoutMs: opts.timeoutMs,
+          maxBytes: opts.imageMaxBytes,
+          ...(opts.allowLocal ? { allowLocal: true } : {}),
+        });
+      } catch (error) {
+        if (error instanceof ImageError) return `[${IMAGE_FAILURE[error.kind]}] ${error.message}`;
+        return `[fetch failed] ${error instanceof Error ? error.message : String(error)}`;
+      }
+      const parsed = new URL(url);
+      const named = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() ?? '');
+      const name = (named.slice(0, 80) || `image.${image.mime.split('/')[1]}`).replace(/[^\w.-]/g, '_');
+      return {
+        text: `web image: ${url} · ${image.mime} · ${sizeOf(image.size)}`,
+        blobs: [{ bytes: image.bytes, mime: image.mime, name, fallbackText: `an image from ${parsed.host}` }],
+      };
     },
   };
 }

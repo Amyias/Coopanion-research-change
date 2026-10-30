@@ -59,6 +59,16 @@ async function assertPublicHost(url: URL): Promise<void> {
   if (local) throw new ImageError('blocked', `${host} resolves into the local network (${local.address})`);
 }
 
+/** `fetch` reports a failed connection as "fetch failed"; the code behind it is what a receipt needs. */
+function reasonOf(error: unknown): string {
+  const cause = (error as { cause?: { code?: unknown; message?: unknown } } | null)?.cause;
+  const code = typeof cause?.code === 'string' ? cause.code : '';
+  const detail = typeof cause?.message === 'string' ? cause.message : '';
+  if (code && detail) return `${code}: ${detail}`;
+  if (code) return code;
+  return detail || (error instanceof Error ? error.message : String(error));
+}
+
 export interface ReadImageOptions {
   timeoutMs: number;
   maxBytes: number;
@@ -130,7 +140,7 @@ export async function readImage(raw: string, opts: ReadImageOptions): Promise<Im
   } catch (error) {
     if (error instanceof ImageError) throw error;
     if (abort.signal.aborted) throw new ImageError('fetch', `no answer within ${opts.timeoutMs} ms`);
-    throw new ImageError('fetch', error instanceof Error ? error.message : String(error));
+    throw new ImageError('fetch', reasonOf(error));
   } finally {
     clearTimeout(timer);
   }

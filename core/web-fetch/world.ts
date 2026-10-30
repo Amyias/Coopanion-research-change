@@ -1,6 +1,6 @@
 /** The `web-fetch` World's class: it mounts the tools and has no environment section of its own. */
 import type { ToolDef, World, WorldHost } from 'cortico/core/types.ts';
-import { webFetchTool, type WebFetchOptions } from './tools.ts';
+import { imageFetchTool, webFetchTool, type WebFetchOptions } from './tools.ts';
 
 export class WebFetchWorld implements World {
   readonly id = 'web-fetch';
@@ -16,7 +16,7 @@ export class WebFetchWorld implements World {
   }
 
   tools(): ToolDef[] {
-    return [webFetchTool(this.opts)];
+    return [webFetchTool(this.opts), imageFetchTool(this.opts)];
   }
 
   async start(_host: WorldHost): Promise<void> {}

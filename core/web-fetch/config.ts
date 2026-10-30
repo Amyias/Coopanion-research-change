@@ -1,4 +1,4 @@
-/** The `web-fetch` World's config section: where the Fetch API lives, how long to wait and how much of a page to keep. */
+/** The `web-fetch` World's config section: where the Fetch API lives, how long to wait, and how much of a page or an image to keep. */
 import type { WorldSection } from 'cortico/world.ts';
 
 /** The secret the websearch World's DeepSeek provider stores; the Fetch API takes the same key. */
@@ -10,6 +10,8 @@ export interface WebFetchConfigSection extends WorldSection {
   timeoutMs: number;
   /** A page longer than this is cut, and the receipt says how much was left out. */
   maxChars: number;
+  /** An image larger than this is refused before its body is kept. */
+  imageMaxBytes: number;
 }
 
 export const WEB_FETCH_DEFAULTS = {
@@ -17,4 +19,5 @@ export const WEB_FETCH_DEFAULTS = {
   baseUrl: 'https://api.deepseek.com',
   timeoutMs: 20_000,
   maxChars: 12_000,
+  imageMaxBytes: 8 * 1024 * 1024,
 } as const satisfies WebFetchConfigSection;

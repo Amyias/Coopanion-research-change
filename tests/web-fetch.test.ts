@@ -4,10 +4,11 @@
  * scripted.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from '../core/web-fetch/config.ts';
 import { WEB_FETCH } from '../core/web-fetch/definition.ts';
-import { webFetchTool } from '../core/web-fetch/tools.ts';
+import { imageFetchTool, webFetchTool } from '../core/web-fetch/tools.ts';
 
 const closing: Array<() => void> = [];
 afterEach(() => { for (const close of closing.splice(0)) close(); });
@@ -31,12 +32,38 @@ async function api(handler: (url: string) => { status?: number; body: unknown })
   return { baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, calls };
 }
 
-function tool(baseUrl: string, overrides: { maxChars?: number; secret?: string } = {}) {
+/** Serves what the handler writes to a GET, recording the paths asked for. */
+async function serveGet(handler: (path: string, res: ServerResponse) => void): Promise<{ origin: string; hits: string[] }> {
+  const hits: string[] = [];
+  const server: Server = createServer((req, res) => {
+    hits.push(req.url ?? '');
+    handler(req.url ?? '', res);
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  closing.push(() => { server.closeAllConnections(); server.close(); });
+  const { port } = server.address() as AddressInfo;
+  return { origin: `http://127.0.0.1:${port}`, hits };
+}
+
+function tool(baseUrl: string, overrides: { maxChars?: number; imageMaxBytes?: number; secret?: string } = {}) {
   return webFetchTool({
     baseUrl,
     timeoutMs: 5000,
     maxChars: overrides.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
+    imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
     secret: (name) => (name === WEB_FETCH_SECRET ? (overrides.secret ?? 'test-key') : ''),
+  });
+}
+
+/** The image tool's options: it reads from the same local server the page tests use. */
+function imageTool(overrides: { imageMaxBytes?: number; allowLocal?: boolean } = {}) {
+  return imageFetchTool({
+    baseUrl: '',
+    timeoutMs: 5000,
+    maxChars: WEB_FETCH_DEFAULTS.maxChars,
+    imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
+    secret: () => 'test-key',
+    ...(overrides.allowLocal === false ? {} : { allowLocal: true }),
   });
 }
 
@@ -84,12 +111,63 @@ describe('web_fetch', () => {
   });
 });
 
+const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+describe('web_fetch_image', () => {
+  it('returns the image as an attachment the bot can show', async () => {
+    const { origin } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(Buffer.from(png));
+    });
+    const out = await imageTool().handler({ url: `${origin}/cat.png` }, {} as never);
+    expect(typeof out).toBe('object');
+    const outcome = out as { text: string; blobs?: Array<{ bytes: Uint8Array; mime: string; name?: string; fallbackText: string }> };
+    expect(outcome.text).toBe(`web image: ${origin}/cat.png · image/png · ${png.length} B`);
+    expect(outcome.blobs).toHaveLength(1);
+    expect(outcome.blobs?.[0]).toMatchObject({ mime: 'image/png', name: 'cat.png' });
+    expect([...(outcome.blobs?.[0]?.bytes ?? [])]).toEqual([...png]);
+    expect(outcome.blobs?.[0]?.fallbackText).toBe(`an image from 127.0.0.1:${new URL(origin).port}`);
+  });
+
+  it('refuses an answer that is not an image', async () => {
+    const { origin } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html></html>');
+    });
+    expect(await imageTool().handler({ url: `${origin}/x.html` }, {} as never)).toBe('[not an image] the answer is text/html');
+  });
+
+  it('refuses an image over the size limit', async () => {
+    const { origin } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': '2048' });
+      res.flushHeaders();
+      res.write(Buffer.from(png));
+    });
+    expect(await imageTool({ imageMaxBytes: 1024 }).handler({ url: `${origin}/big.png` }, {} as never)).toMatch(/^\[too large\]/);
+  });
+
+  it('will not read the local network unless a test says so', async () => {
+    const { origin, hits } = await serveGet((_path, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(Buffer.from(png));
+    });
+    expect(await imageTool({ allowLocal: false }).handler({ url: `${origin}/cat.png` }, {} as never)).toMatch(/^\[not allowed\]/);
+    expect(hits).toEqual([]);
+  });
+
+  it('refuses a URL it must not fetch', async () => {
+    for (const url of ['ftp://example.com/cat.png', 'https://user:pass@example.com/cat.png', 'example.com']) {
+      expect(await imageTool().handler({ url }, {} as never)).toBe('[bad input] url must be an absolute http or https URL with a host and no credentials');
+    }
+  });
+});
+
 describe('the web-fetch World', () => {
-  it('mounts web_fetch and describes it for the WebUI', () => {
+  it('mounts both tools and describes them for the WebUI', () => {
     const world = WEB_FETCH.create({ cfg: { ...WEB_FETCH_DEFAULTS }, secret: () => 'test-key' } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
     expect(world.id).toBe(WEB_FETCH.id);
-    expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch']);
-    expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch']);
+    expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image']);
+    expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image']);
     expect(WEB_FETCH.defaults()).toEqual(WEB_FETCH_DEFAULTS);
   });
 });

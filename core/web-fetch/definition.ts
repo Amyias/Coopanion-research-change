@@ -16,6 +16,7 @@ import { WebFetchWorld } from './world.ts';
 const DESCRIBE: WorldDescribe = {
   tools: describeTools(WEB_FETCH_TOOL_DECLS, {
     web_fetch: { zh: '把指定网页的正文按 Markdown 读回来。', en: 'Reads one page as Markdown.' },
+    web_fetch_image: { zh: '按 URL 取回一张网图，作为附件交给 Bot。', en: 'Downloads one image from a URL as an attachment.' },
   }),
   events: [],
 };
@@ -29,6 +30,7 @@ export const WEB_FETCH: WorldDefinition<WebFetchConfigSection> = {
       baseUrl: ctx.cfg.baseUrl ?? WEB_FETCH_DEFAULTS.baseUrl,
       timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
       maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
+      imageMaxBytes: ctx.cfg.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
       secret: (name) => ctx.secret(name),
     }),
   describe: DESCRIBE,
