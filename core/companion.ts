@@ -564,7 +564,9 @@ export async function main(): Promise<void> {
   registerProviderModules([COO, CHATGPT_PROVIDER, ...extensions.providers]);
   extensions.webUiAssets.push(...bundledWebUiAssets([
     { id: DESKTOP_PET.id, packageName: 'cortico-world-desktop-pet' },
-  ]), ...appWebUiAsset(NOTICE_ID, join(APP_ROOT, 'build', 'panels', 'coopanion'), APP_VERSION));
+  ]),
+    ...appWebUiAsset(NOTICE_ID, join(APP_ROOT, 'build', 'panels', 'coopanion'), APP_VERSION),
+    ...appWebUiAsset(WEB_FETCH.id, join(APP_ROOT, 'build', 'panels', 'web-fetch'), APP_VERSION));
   const definition = withWorlds(definitionBase, [...bundled, ...extensions.worlds]);
 
   const loaded = loadDeployment(definition, deployDir, repoRoot(), join(repoRoot(), 'bots', 'cormini'), providersRoot());

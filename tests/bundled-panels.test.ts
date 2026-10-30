@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Logger } from 'cortico/core/types.ts';
 import { WebUiAssets } from 'cortico/web/webui-pages.ts';
-import { bundledWebUiAssets } from '../core/bundled-panels.ts';
+import { appWebUiAsset, bundledWebUiAssets } from '../core/bundled-panels.ts';
 
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const log = { error: (msg: string) => { throw new Error(msg); } } as unknown as Logger;
 
 describe('bundled World panels', () => {
@@ -23,5 +25,13 @@ describe('bundled World panels', () => {
       js: expect.stringMatching(/^\/assets\/extensions\/cortico-world-desktop-pet\/.+\.js$/),
       css: expect.stringMatching(/\.css$/),
     });
+  });
+
+  it('registers the WebFetch panel bundle built from core/, and nothing when it is missing', () => {
+    const built = appWebUiAsset('web-fetch', join(ROOT, 'build', 'panels', 'web-fetch'), '0.2.27');
+    expect(built.map((asset) => asset.pageId)).toEqual(['world:web-fetch']);
+    expect(existsSync(built[0].jsFile)).toBe(true);
+    expect(built[0].version).toMatch(/^0\.2\.27-[0-9a-f]{10}$/);
+    expect(appWebUiAsset('web-fetch', join(ROOT, 'build', 'panels', 'absent'), '0.2.27')).toEqual([]);
   });
 });

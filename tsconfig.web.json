@@ -9,5 +9,5 @@
   },
   "files": [],
   "exclude": [],
-  "include": ["console/**/*.ts", "console/**/*.tsx", "core/webui/**/*.ts"]
+  "include": ["console/**/*.ts", "console/**/*.tsx", "core/webui/**/*.ts", "core/web-fetch/webui/**/*.ts"]
 }

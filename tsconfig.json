@@ -18,5 +18,5 @@
     "paths": { "cortico/*": ["./vendor/cortico/src/*"] }
   },
   "include": ["core/**/*.ts", "scripts/**/*.ts", "packages/cortico-provider-coo/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "build", "dist", "vendor", "core/webui/client.ts"]
+  "exclude": ["node_modules", "build", "dist", "vendor", "core/webui/client.ts", "core/web-fetch/webui/client.ts"]
 }

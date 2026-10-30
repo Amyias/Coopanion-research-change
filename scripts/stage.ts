@@ -77,19 +77,25 @@ const panel = spawnSync(process.execPath, [join(pet, 'scripts', 'build-webui.mjs
 if (panel.status !== 0) process.exit(panel.status ?? 1);
 
 const esbuild = await import('esbuild');
-const PANELS_OUT = join(ROOT, 'build', 'panels', 'coopanion');
-rmSync(PANELS_OUT, { recursive: true, force: true });
-await esbuild.build({
-  entryPoints: [{ in: join(ROOT, 'core', 'webui', 'client.ts'), out: 'webui' }],
-  outdir: PANELS_OUT,
-  bundle: true,
-  format: 'esm',
-  target: 'es2022',
-  platform: 'browser',
-  minify: true,
-  sourcemap: true,
-  logLevel: 'warning',
-});
+const PANELS = [
+  { dir: 'coopanion', entry: join(ROOT, 'core', 'webui', 'client.ts') },
+  { dir: 'web-fetch', entry: join(ROOT, 'core', 'web-fetch', 'webui', 'client.ts') },
+];
+for (const panel of PANELS) {
+  const out = join(ROOT, 'build', 'panels', panel.dir);
+  rmSync(out, { recursive: true, force: true });
+  await esbuild.build({
+    entryPoints: [{ in: panel.entry, out: 'webui' }],
+    outdir: out,
+    bundle: true,
+    format: 'esm',
+    target: 'es2022',
+    platform: 'browser',
+    minify: true,
+    sourcemap: true,
+    logLevel: 'warning',
+  });
+}
 
 // the settings window: one ES module bundle (the CSS it imports becomes index.css), its stylesheet, the page.
 // The version and the build's channel (COOPANION_CHANNEL as scripts/pack.ts writes it into the app, github
