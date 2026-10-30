@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { clamp, f, ICONS, linked } from '../packages/cortico-world-desktop-pet/web/ui.js';
 import { COO_CSS, mini, normalizeSkin, skinCss } from '../packages/cortico-world-desktop-pet/web/coo/coo.js';
 import { t } from '../packages/cortico-world-desktop-pet/web/i18n.js';
+import { carouselHtml, clampIndex } from '../packages/cortico-world-desktop-pet/web/say-images.js';
 
 const WEB = new URL('../packages/cortico-world-desktop-pet/web/', import.meta.url);
 const source = readFileSync(new URL('pet-app.js', WEB), 'utf8').replace(/^import .*;$/gm, '');
@@ -36,12 +37,12 @@ function page({ host = false, hash = '' } = {}) {
     createSpeech: () => ({ configure() {}, begin() {}, reveal() { return false; }, stop() {}, active: false }),
     textSteps: () => 1,
     loadBody: async () => body, body,
-    t, language: () => 'zh', useLanguage: async () => {},
+    t, language: () => 'zh', useLanguage: async () => {}, carouselHtml, clampIndex,
     // the tab's stage (stage.js) is decoration the activity bubble does not depend on
     lightWall() {}, dressFloor() {}, modeButton: () => ({ show() {} }), glowColor: () => null, setGlow() {}, bindAppearance() {}, announcePainted() {},
     createMic: () => ({ start() {}, stop() {} }),
   };
-  win.eval(`const { applyTheme, clamp, f, ICONS, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, closeBubble, step: (dt) => { T += dt; stepDialog(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES };`);
+  win.eval(`const { applyTheme, clamp, f, ICONS, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic, carouselHtml, clampIndex } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, closeBubble, step: (dt) => { T += dt; stepDialog(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES };`);
   return { ...win.page, bubble: win.document.querySelector('#bubble'), bodyChanges, doc: win.document, sockets, win };
 }
 
@@ -245,5 +246,43 @@ describe("the person's lines above Coo", () => {
     expect(up(p)).toHaveLength(1);
     p.onOrder({ t: 'listen', phase: 'heard', text: '今天天气怎么样' });
     expect(up(p)).toHaveLength(0);
+  });
+});
+
+describe('pictures in a say bubble', () => {
+  const pictures = [{ token: 'a', mime: 'image/png' }, { token: 'b', mime: 'image/jpeg' }];
+  const said = (p, images = pictures) => {
+    p.onOrder({ t: 'say', id: 's', beats: [{ text: '', actions: [], anchors: [] }], images });
+    p.step(.01);
+    p.step(.5);
+  };
+
+  it('shows one picture at a time and turns the page with the arrows', () => {
+    const p = page();
+    said(p);
+    expect(p.bubble.querySelector('.b-pics img').getAttribute('src')).toBe('/say-image/a');
+    expect(p.bubble.querySelector('.b-count').textContent).toBe('1 / 2');
+    expect(p.bubble.querySelector('[data-carousel="prev"]').disabled).toBe(true);
+    p.bubble.querySelector('[data-carousel="next"]').click();
+    expect(p.bubble.querySelector('.b-pics img').getAttribute('src')).toBe('/say-image/b');
+    expect(p.bubble.querySelector('.b-count').textContent).toBe('2 / 2');
+    expect(p.bubble.querySelector('[data-carousel="next"]').disabled).toBe(true);
+    expect(p.bubble.hidden).toBe(false);
+  });
+
+  it('keeps a bubble with pictures longer than a line without one', () => {
+    const p = page();
+    said(p);
+    p.step(4);
+    expect(p.bubble.hidden).toBe(false);
+    p.step(30);
+    expect(p.bubble.hidden).toBe(true);
+  });
+
+  it('gives a single picture no arrows', () => {
+    const p = page();
+    said(p, [pictures[0]]);
+    expect(p.bubble.querySelector('.b-pics img')).not.toBeNull();
+    expect(p.bubble.querySelector('.b-caro')).toBeNull();
   });
 });

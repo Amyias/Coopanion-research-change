@@ -22,6 +22,9 @@ export default {
   'heard.listening': '正在傾聽…',
   'heard.cancel': '取消',
   'said.images': '圖片 ×{count}',
+  'say.imageAlt': '圖片',
+  'say.previous': '上一張',
+  'say.next': '下一張',
 
   // the status bubble
   'status.more': ' 和另外 {others} 個',

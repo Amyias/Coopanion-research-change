@@ -25,6 +25,9 @@ export default {
   'heard.listening': '正在倾听…',
   'heard.cancel': '取消',
   'said.images': '图片 ×{count}',
+  'say.imageAlt': '图片',
+  'say.previous': '上一张',
+  'say.next': '下一张',
 
   // 状态气泡:同一类事做了好几次时接在后面
   'status.more': ' 和另外 {others} 个',

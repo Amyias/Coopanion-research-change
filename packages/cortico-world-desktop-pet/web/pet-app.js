@@ -19,6 +19,7 @@ import { loadBody } from './body-host.js';
 import { accentColors, announcePainted, bubbleCss, dressFloor, glowColor, lightWall, modeButton, setGlow } from './stage.js';
 import { bindAppearance } from './appearance.js';
 import { createMic } from './mic.js';
+import { carouselHtml, clampIndex } from './say-images.js';
 
 const $ = (s) => document.querySelector(s);
 const host = window.petHost || null;
@@ -310,7 +311,7 @@ function onOrder(m) {
     // the settings window's 「在桌面上隐藏」: the same as the menu's 「隐藏」
     case 'hide': host?.hide?.(); break;
     case 'type': openTyping(); break;
-    case 'say': dropAsks(); queue.push({ kind: 'say', id: m.id, beats: m.beats, i: -1 }); holdRoam(20); break;
+    case 'say': dropAsks(); queue.push({ kind: 'say', id: m.id, beats: m.beats, images: Array.isArray(m.images) ? m.images : [], i: -1 }); holdRoam(20); break;
     case 'ask': dropAsks(); queue.push({ kind: 'ask', id: m.id, question: m.question, options: m.options || [], own: m.own !== false }); holdRoam(20); break;
     case 'confirm': dropAsks(); queue.push({ kind: 'ask', confirm: true, id: m.id, question: m.question, options: m.options, own: false }); holdRoam(20); break;
     case 'walk': walk(m); break;
@@ -383,6 +384,16 @@ function stepActs() {
 /* ---------- say / ask ---------- */
 const queue = [];
 let item = null;
+/** The arrows of a say bubble's pictures: the bubble outlives its lines, so one listener serves them all. */
+bubble.addEventListener('click', (event) => {
+  const button = event.target.closest?.('[data-carousel]');
+  if (!button || button.disabled || !item || item.kind !== 'say' || !item.images?.length) return;
+  event.stopPropagation();
+  item.imageIndex = clampIndex(item.imageIndex + (button.dataset.carousel === 'next' ? 1 : -1), item.images.length);
+  const pictures = bubble.querySelector('.b-images');
+  if (pictures) pictures.outerHTML = carouselHtml(item.images, item.imageIndex, t);
+  sfx.tick();
+});
 /** Where typing pauses: sentence and clause marks, Latin and full-width (Chinese and Japanese share 。、). */
 const PAUSE = /[,.!?;:…，。！？；：、]/, SILENT = /[\s,.!?;:…，。！？；：、「」『』()（）]/;
 
@@ -464,6 +475,9 @@ function pointedAt() {
   return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
+/** Seconds a bubble with pictures stays after its last line: long enough to page through, capped at 20. */
+function imageHoldSeconds(count) { return Math.min(20, 6 + 2 * count); }
+
 function stepDialog(dt) {
   if (!item && queue.length && at() && !at().busy) startItem(queue.shift());
   const it = item;
@@ -474,12 +488,24 @@ function stepDialog(dt) {
       if (it.beatDone && T < it.holdUntil) return;
       it.i++;
       it.beatDone = false;
-      if (it.i >= it.beats.length) { closeBubble(); return; }
+      if (it.i >= it.beats.length) {
+        if (it.images.length) {
+          if (!it.imageHoldDone) { it.imageHoldDone = true; it.beatDone = true; it.holdUntil = T + imageHoldSeconds(it.images.length); }
+          else if (pointedAt()) it.holdUntil += dt;
+          if (T < it.holdUntil) return;
+        }
+        closeBubble();
+        return;
+      }
       const b = it.beats[it.i];
       let lead = 0;
       for (const a of b.actions || []) { acts.push(a); lead = .45; }
       it.shown = 0; it.acc = 0; it.fired = 0; it.startAt = T + lead;
-      if (b.text) { openBubble('say', '<p class="b-text"></p>'); sfx.pop(); } else { bubble.hidden = true; }
+      if (b.text || it.images.length) {
+        it.imageIndex = clampIndex(it.imageIndex ?? 0, it.images.length);
+        openBubble('say', `<p class="b-text"></p>${it.images.length ? carouselHtml(it.images, it.imageIndex, t) : ''}`);
+        if (b.text) sfx.pop();
+      } else { bubble.hidden = true; }
       return;
     }
     const b = it.beats[it.i];

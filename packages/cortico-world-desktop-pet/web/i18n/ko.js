@@ -22,6 +22,9 @@ export default {
   'heard.listening': '듣는 중…',
   'heard.cancel': '취소',
   'said.images': '이미지 ×{count}',
+  'say.imageAlt': '이미지',
+  'say.previous': '이전 이미지',
+  'say.next': '다음 이미지',
 
   // the status bubble: added when the same kind of thing was done several times
   'status.more': ' 외 {others}개',

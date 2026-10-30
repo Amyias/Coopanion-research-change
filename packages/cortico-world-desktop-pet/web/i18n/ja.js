@@ -22,6 +22,9 @@ export default {
   'heard.listening': '聞き取り中…',
   'heard.cancel': 'キャンセル',
   'said.images': '画像 ×{count}',
+  'say.imageAlt': '画像',
+  'say.previous': '前の画像',
+  'say.next': '次の画像',
 
   // the status bubble
   'status.more': ' ほか {others} 件',

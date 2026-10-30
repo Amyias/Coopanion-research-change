@@ -180,6 +180,13 @@ body.desk .floor{display:none}
 .caret{display:inline-block; width:2px; height:1.05em; margin-left:2px; vertical-align:-2px; background:var(--skin-eye); animation:caret 1s steps(1) infinite}
 @keyframes caret{50%{opacity:0}}
 .b-hint{display:block; margin-top:2px; font-size:calc(12px * var(--bubble-font, 1)); color:var(--muted)}
+/* the pictures a say bubble shows: one at a time, with arrows and a count when there are more */
+.b-images{margin-top:calc(4px * var(--bubble-size, 1))}
+.b-pics img{display:block; width:100%; max-height:calc(160px * var(--bubble-size, 1)); object-fit:contain; border-radius:calc(10px * var(--bubble-size, 1)); background:var(--surface)}
+.b-caro{display:flex; align-items:center; justify-content:space-between; gap:calc(6px * var(--bubble-size, 1)); margin-top:calc(2px * var(--bubble-size, 1))}
+.b-arrow{width:calc(22px * var(--bubble-size, 1)); height:calc(22px * var(--bubble-size, 1)); padding:0; border:0; border-radius:50%; background:transparent; color:var(--said-ink); cursor:pointer; font:inherit; line-height:1}
+.b-arrow:disabled{opacity:.35; cursor:default}
+.b-count{font-size:calc(12px * var(--bubble-font, 1)); color:var(--muted); font-variant-numeric:tabular-nums}
 .b-foot{display:flex; align-items:center; gap:8px; margin-top:2px}
 .b-foot .b-hint{flex:1; margin-top:0}
 .b-cancel{flex:none; font:inherit; font-size:calc(12px * var(--bubble-font, 1)); padding:2px 9px; border-radius:8px; border:1.5px solid var(--line); background:none; color:var(--muted); cursor:pointer}

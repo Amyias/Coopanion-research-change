@@ -27,6 +27,9 @@ export default {
   'heard.listening': 'Listening…',
   'heard.cancel': 'Cancel',
   'said.images': 'Images ×{count}',
+  'say.imageAlt': 'An image',
+  'say.previous': 'Previous image',
+  'say.next': 'Next image',
 
   // the status bubble: added when the same kind of thing was done several times
   'status.more': ' and {others} more',

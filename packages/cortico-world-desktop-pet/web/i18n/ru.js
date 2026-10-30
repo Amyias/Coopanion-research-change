@@ -22,6 +22,9 @@ export default {
   'heard.listening': 'Слушаю…',
   'heard.cancel': 'Отмена',
   'said.images': 'Изображения ×{count}',
+  'say.imageAlt': 'Изображение',
+  'say.previous': 'Предыдущее изображение',
+  'say.next': 'Следующее изображение',
 
   // the status bubble: added when the same kind of thing was done several times
   'status.more': ' и ещё {others}',
