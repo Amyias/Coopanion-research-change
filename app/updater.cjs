@@ -41,6 +41,7 @@ function startUpdater({ logDir, tell, enabled }) {
 
   if (process.platform === 'win32') {
     const source = releaseSource(join(process.resourcesPath, 'app-update.yml'));
+    line('info')(`updater started: node transport, ${source.owner}/${source.repo}, app ${app.getVersion()}, enabled=${enabled}`);
     return manageUpdates(createNodeUpdater({
       owner: source.owner,
       repo: source.repo,
@@ -48,7 +49,7 @@ function startUpdater({ logDir, tell, enabled }) {
       // the cache electron-updater used, so an update already downloaded there is not fetched again
       cacheDir: join(process.env.LOCALAPPDATA ?? app.getPath('userData'), source.cacheDirName),
       installDir: dirname(process.execPath),
-      log: line,
+      log: (level, message) => line(level)(message),
       spawn: require('node:child_process').spawn,
     }), { tell, enabled });
   }

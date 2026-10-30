@@ -98,6 +98,20 @@ describe('the Node updater', () => {
     expect(releaseSource(file)).toEqual({ owner: 'someone', repo: 'something', cacheDirName: 'my-updater' });
   });
 
+  it('writes what it does, so a check that fails cannot pass unnoticed', async () => {
+    const server = await releaseServer();
+    const lines = [];
+    const updater = createNodeUpdater({
+      owner: 'Amyias', repo: 'coopanion', currentVersion: '1.0.0',
+      cacheDir: mkdtempSync(join(tmpdir(), 'coo-log-')), installDir: 'D:\\Coopanion', releaseApi: server.apiBase,
+      log: (level, message) => lines.push(`${level} ${message}`),
+      spawn: () => ({ unref() {} }),
+    });
+    await updater.checkForUpdates();
+    expect(lines[0]).toMatch(/^info checking for update as 1\.0\.0$/);
+    expect(lines.some((line) => line.includes('latest release 1.1.0, latest.yml 1.1.0'))).toBe(true);
+  });
+
   it('reports a newer release and downloads exactly the installer the channel file describes', async () => {
     const server = await releaseServer();
     const updater = updaterFor(server.base, server.apiBase);
