@@ -11,7 +11,6 @@
 import type { ToolDef, World, WorldHost } from 'cortico/core/types.ts';
 import { describeTools, type WorldDefinition, type WorldDescribe, type WorldSection } from 'cortico/world.ts';
 
-export const WEB_FETCH_ID = 'web-fetch';
 /** The secret the websearch World's DeepSeek provider stores; the Fetch API takes the same key. */
 const SECRET = 'DEEPSEEK_SEARCH_API_KEY';
 /** The API refuses a longer URL, and one with credentials in it. */
@@ -153,7 +152,7 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
 }
 
 class WebFetchWorld implements World {
-  readonly id = WEB_FETCH_ID;
+  readonly id = 'web-fetch';
   private readonly opts: WebFetchOptions;
 
   constructor(opts: WebFetchOptions) {
@@ -161,8 +160,8 @@ class WebFetchWorld implements World {
   }
 
   /** No environment section: the tool's description says when to use it. */
-  envPromptVars(): null {
-    return null;
+  envPromptVars(): Record<string, string> {
+    return {};
   }
 
   tools(): ToolDef[] {
@@ -181,18 +180,16 @@ const DESCRIBE: WorldDescribe = {
   events: [],
 };
 
-export function webFetchDefinition(): WorldDefinition<WebFetchConfigSection> {
-  return {
-    id: WEB_FETCH_ID,
-    label: 'WebFetch',
-    defaults: () => ({ ...WEB_FETCH_DEFAULTS }),
-    create: (ctx) =>
-      new WebFetchWorld({
-        baseUrl: ctx.cfg.baseUrl ?? WEB_FETCH_DEFAULTS.baseUrl,
-        timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
-        maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-        secret: (name) => ctx.secret(name),
-      }),
-    describe: DESCRIBE,
-  };
-}
+export const WEB_FETCH: WorldDefinition<WebFetchConfigSection> = {
+  id: 'web-fetch',
+  label: 'WebFetch',
+  defaults: () => ({ ...WEB_FETCH_DEFAULTS }),
+  create: (ctx) =>
+    new WebFetchWorld({
+      baseUrl: ctx.cfg.baseUrl ?? WEB_FETCH_DEFAULTS.baseUrl,
+      timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
+      maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
+      secret: (name) => ctx.secret(name),
+    }),
+  describe: DESCRIBE,
+};

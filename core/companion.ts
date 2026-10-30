@@ -80,7 +80,7 @@ import type { contextStageConfigGroup } from '../vendor/cortico/bots/cormini/per
 import type { CorminiConfig } from '../vendor/cortico/bots/cormini/index.ts';
 import { crashFields, describeEndpoint, publicExtensionName, Telemetry, type Counter } from './telemetry.ts';
 import { AUTO_UPDATE_DEFAULT, autoUpdateProperties, watchAutoUpdate, type UpdateConfig } from './update-settings.ts';
-import { WEB_FETCH_ID, webFetchDefinition } from './web-fetch.ts';
+import { WEB_FETCH } from './web-fetch.ts';
 
 /** The active endpoint's key is set in the process environment or the endpoint's `.env`; a ChatGPT plan's endpoint is signed in. */
 function hasKey(config: CoreConfig): boolean {
@@ -507,7 +507,7 @@ export async function main(): Promise<void> {
   let coo: CoopanionPersona | null = null;
   const definitionBase: BotDefinition<CorminiConfig & UpdateConfig> = {
     ...base.definition,
-    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id, WEBSEARCH.id, WEB_FETCH_ID],
+    declares: [CONSOLE.id, DESKTOP_PET.id, NOTICE.id, WEBSEARCH.id, WEB_FETCH.id],
     // Cormini's tools under the same names; the memory differs by PARTNER.md and the version history
     describe: {
       tools: base.definition.describe?.tools ?? [],
@@ -554,7 +554,7 @@ export async function main(): Promise<void> {
       };
     },
   };
-  const bundled = [CONSOLE, DESKTOP_PET, NOTICE, WEBSEARCH, webFetchDefinition()] as WorldDefinition<WorldSection>[];
+  const bundled = [CONSOLE, DESKTOP_PET, NOTICE, WEBSEARCH, WEB_FETCH] as WorldDefinition<WorldSection>[];
 
   // extension providers must be registered before endpoints are resolved
   const extensions = await loadExtensions(repoRoot(), {
