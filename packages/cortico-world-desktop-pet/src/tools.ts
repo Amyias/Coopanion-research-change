@@ -21,7 +21,7 @@ export const petToolDecls = (language: Language = 'zh'): Array<Omit<ToolDef, 'ha
       type: 'object',
       properties: {
         script: { type: 'string', description: 'What to say, with optional 【expression, motion】 and <expression> markers. One or two sentences per bubble. May be empty when images carry the message. Do not call this when you have nothing to say.' },
-        images: { type: 'array', items: { type: 'string' }, description: 'Images to show the person with this line, each given by the handle that starts a [blob …] line in your context. They appear on the chat page only, not in the bubble.' },
+        images: { type: 'array', items: { type: 'string' }, description: 'Images to show the person with this line, each given by the handle that starts a [blob …] line in your context. The bubble shows them one at a time, with arrows to move between them; the chat page has them all.' },
       },
       required: ['script'],
     },

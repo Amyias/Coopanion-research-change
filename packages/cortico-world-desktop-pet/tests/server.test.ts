@@ -178,6 +178,23 @@ describe('OBS overlay', () => {
   });
 });
 
+describe('say pictures', () => {
+  it('serves a picture a say message showed, by its token only', async () => {
+    const bytes = Uint8Array.from([7, 8, 9]);
+    const server = await serve({ on: false }, { sayImage: (token) => (token === 'shown' ? { bytes, mime: 'image/png' } : null) });
+    const ok = await fetch(`${server.origin}/say-image/shown`);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('content-type')).toBe('image/png');
+    expect([...new Uint8Array(await ok.arrayBuffer())]).toEqual([7, 8, 9]);
+    expect((await fetch(`${server.origin}/say-image/missing`)).status).toBe(404);
+  });
+
+  it('serves none when the World keeps no pictures', async () => {
+    const server = await serve();
+    expect((await fetch(`${server.origin}/say-image/anything`)).status).toBe(404);
+  });
+});
+
 describe('installed pack files', () => {
   it('a pack page opened on its own is sandboxed, and its script is still served as a script', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pet-pack-'));

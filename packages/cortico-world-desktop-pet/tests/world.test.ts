@@ -180,6 +180,36 @@ describe('with a pet page', () => {
     expect(out.text).toContain('飞');
   });
 
+  it('pet_say gives the page a token per picture, and the page fetches only those', async () => {
+    const { world, host } = await mounted(undefined, { sayImageTtlMs: 60_000 });
+    const page = await FakePage.open(origin(world));
+    cleanup.push(() => page.close());
+    host.mem.set('mem:a', { bytes: Uint8Array.from([1, 2, 3]), mime: 'image/png' });
+    host.mem.set('mem:b', { bytes: Uint8Array.from([4, 5]), mime: 'image/jpeg' });
+    await tool(world, 'pet_say').handler({ script: '看图', images: ['mem:a', 'mem:b'] }, ctx);
+    const say = await page.next((m) => m.t === 'say');
+    const images = say.images as Array<{ token: string; mime: string }>;
+    expect(images.map((image) => image.mime)).toEqual(['image/png', 'image/jpeg']);
+    const served = await fetch(`${origin(world)}/say-image/${images[0].token}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/png');
+    expect([...new Uint8Array(await served.arrayBuffer())]).toEqual([1, 2, 3]);
+    expect((await fetch(`${origin(world)}/say-image/not-a-token`)).status).toBe(404);
+  });
+
+  it('stops serving a shown picture once its token expires', async () => {
+    const { world, host } = await mounted(undefined, { sayImageTtlMs: 40 });
+    const page = await FakePage.open(origin(world));
+    cleanup.push(() => page.close());
+    host.mem.set('mem:a', { bytes: Uint8Array.from([9]), mime: 'image/png' });
+    await tool(world, 'pet_say').handler({ script: '看图', images: ['mem:a'] }, ctx);
+    const say = await page.next((m) => m.t === 'say');
+    const [image] = say.images as Array<{ token: string }>;
+    expect((await fetch(`${origin(world)}/say-image/${image.token}`)).status).toBe(200);
+    await new Promise((done) => setTimeout(done, 80));
+    expect((await fetch(`${origin(world)}/say-image/${image.token}`)).status).toBe(404);
+  });
+
   it('pet_ask delivers the chosen option as an answer event that wakes', async () => {
     const { world, host } = await mounted();
     const page = await FakePage.open(origin(world));

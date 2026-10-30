@@ -18,6 +18,7 @@
  * hints, the default name for the person, and which recognizer and recognition language voice
  * input uses by default. The console's text follows the console request's language.
  */
+import { randomUUID } from 'node:crypto';
 import type { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +96,8 @@ const CHAT_PAGE_EVENTS = 300;
 const CHAT_TEXT_MAX = 4000;
 const IMAGES_MAX = 8;
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+/** How long a picture a `say` showed stays fetchable by the page: long enough to page through and enlarge. */
+const SAY_IMAGE_TTL_MS = 10 * 60_000;
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 /** How often config edits from the console reach the pages: short enough that the size slider moves the pet with it. */
 const PREFS_SYNC_MS = 150;
@@ -206,6 +209,8 @@ export interface DesktopPetWorldOptions {
   persist: (patch: DeepPartial<DesktopPetConfigSection>) => void;
   runtimesRoot: () => string;
   modelsDir: () => string;
+  /** How long a picture a `say` showed stays fetchable by the page, in milliseconds; tests shorten it. */
+  sayImageTtlMs?: number;
   /** Downloads; tests pass a local stand-in. */
   fetchImpl?: typeof fetch;
   /** Loads sherpa-onnx; tests pass a fake recognizer. */
@@ -412,6 +417,8 @@ export class DesktopPetWorld implements World {
   private readonly pendingChat = new Set<number>();
   /** The first cursor of this run: Core queues this World's undelivered events from before it again at start. */
   private startCursor = 0;
+  /** Pictures a `say` message showed, by the token the page fetches them with; cleared when the World stops. */
+  private readonly sayImages = new Map<string, { bytes: Uint8Array; mime: string; expiresAt: number }>();
   /** Text the bubble's expand button carried, until a chat page takes it. */
   private draft: { text: string; images: DraftImage[] } | null = null;
   private pausedShown: boolean | null = null;
@@ -450,6 +457,7 @@ export class DesktopPetWorld implements World {
       onPetDisconnect: () => this.onPageGone(),
       onSkin: (skin) => this.saveSkin(skin),
       onPrefs: (prefs) => this.savePrefs(prefs),
+   sayImage: (token) => this.sayImage(token),
       avatarFile: opts.avatarFile,
       packs: () => this.packs(),
       packProblems: () => this.packScan().problems,
@@ -706,6 +714,7 @@ export class DesktopPetWorld implements World {
     for (const s of this.voiceSockets) s.close('stopped');
     this.voiceSockets.clear();
     this.chat.closeAll('stopped');
+    this.sayImages.clear();
     await this.windowHost?.stop();
     await this.funasr?.stop();
     await this.whisper?.stop();
@@ -1753,7 +1762,11 @@ export class DesktopPetWorld implements World {
     const { beats, dropped } = parseScript(script, this.vocab());
     const spoken = beats.some((b) => b.text || b.actions.length || b.anchors.length);
     if (!spoken && shown.blobs.length === 0) return { text: this.t.sayEmpty, failed: true };
-    if (spoken && !this.server.sendPet({ t: 'say', id: nextId('s'), beats })) return this.notConnected('pet_say');
+    // pictures reach the bubble too, and the chat page keeps them whether or not a window is attached
+    const images = this.rememberSayImages(shown.blobs);
+    const sent = (spoken || images.length > 0)
+      && this.server.sendPet({ t: 'say', id: nextId('s'), beats, ...(images.length ? { images } : {}) });
+    if (spoken && !sent) return this.notConnected('pet_say');
     void this.closeActivity();
     void this.record({ kind: 'say', beats: beats.map((b) => ({ text: b.text, ...moodOf(b.actions, this.vocab()) })) }, beats.map((b) => b.text).join(''), shown.blobs);
     if (!spoken) return { text: this.t.imagesShown(shown.blobs.length, this.chat.size > 0) };
@@ -1782,6 +1795,30 @@ export class DesktopPetWorld implements World {
       blobs.push({ bytes: got.bytes, mime: got.mime, fallbackText: this.t.shownImage(i + 1, raw.length) });
     }
     return { ok: true, blobs };
+  }
+
+  /**
+   * A token per picture the page may fetch, expiring with `sayImageTtlMs`; expired tokens are dropped as
+   * the next batch is remembered, so the table only holds what a bubble may still show.
+   */
+  private rememberSayImages(blobs: BlobInput[]): Array<{ token: string; mime: string }> {
+    const now = Date.now();
+    for (const [token, image] of this.sayImages) if (image.expiresAt <= now) this.sayImages.delete(token);
+    const ttl = this.opts.sayImageTtlMs ?? SAY_IMAGE_TTL_MS;
+    return blobs.flatMap((blob) => {
+      if (!('bytes' in blob) || !blob.mime.startsWith('image/')) return [];
+      const token = randomUUID();
+      this.sayImages.set(token, { bytes: blob.bytes, mime: blob.mime, expiresAt: now + ttl });
+      return [{ token, mime: blob.mime }];
+    });
+  }
+
+  /** The page fetches one shown picture by its token; an unknown or expired token has nothing. */
+  private sayImage(token: string): { bytes: Uint8Array; mime: string } | null {
+    const image = this.sayImages.get(token);
+    if (!image) return null;
+    if (image.expiresAt <= Date.now()) { this.sayImages.delete(token); return null; }
+    return { bytes: image.bytes, mime: image.mime };
   }
 
   private async askUser(args: Record<string, unknown>): Promise<ToolOutcome> {

@@ -78,6 +78,8 @@ export interface PetServerOptions {
   /** A dressing page saved a skin. */
   onSkin(skin: unknown): void;
   onPrefs(prefs: Record<string, unknown>): void;
+  /** One picture a `say` message shows, by the token in that message; `GET /say-image/<token>` serves it and nothing else. */
+  sayImage?(token: string): { bytes: Uint8Array; mime: string } | null;
   /** PNG served at `/api/avatar`. */
   avatarFile?: string;
   /** The figure packs, looked up again for each request. */
@@ -368,6 +370,13 @@ export class PetServer {
       if (path === '/api/skin') this.opts.onSkin(msg.skin);
       else this.opts.onPrefs(msg);
       return json(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && path.startsWith('/say-image/')) {
+      const image = this.opts.sayImage?.(decodeURIComponent(path.slice('/say-image/'.length)));
+      if (!image) { res.writeHead(404).end(); return; }
+      res.writeHead(200, { 'content-type': image.mime, 'cache-control': 'no-store', 'content-length': image.bytes.byteLength });
+      res.end(image.bytes);
+      return;
     }
     if (req.method !== 'GET') { res.writeHead(405).end(); return; }
     if (path === '/') { res.writeHead(302, { location: '/pet' }).end(); return; }
