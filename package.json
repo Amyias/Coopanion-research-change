@@ -5,8 +5,8 @@
   "private": true,
   "description": "A desktop companion built on Cortico: a pet on your screen that talks, listens and can operate the computer",
   "license": "AGPL-3.0-or-later",
-  "author": "Pal-AI-Lab",
-  "homepage": "https://github.com/Pal-AI-Lab/Coopanion",
+  "author": "Amyias (personal modified version of Pal-AI-Lab Coopanion)",
+  "homepage": "https://github.com/Amyias/Coopanion-research-change",
   "type": "module",
   "main": "app/main.cjs",
   "packageManager": "pnpm@11.28.6",
@@ -59,5 +59,9 @@
     "tar-stream": "3.2.1",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Amyias/Coopanion-research-change.git"
   }
 }
