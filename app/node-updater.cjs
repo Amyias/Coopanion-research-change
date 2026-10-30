@@ -4,9 +4,13 @@
  * not browsers (a security product, for one); Node reaches the same hosts, so the work happens here and
  * only the install is handed back to the app.
  *
+ * The release API answers everything the check needs — the version in its tag and, for each asset, its
+ * size and sha256 digest — so nothing is fetched from `github.com` before a download is actually due.
+ * An older answer without a digest falls back to the release's `latest.yml` (electron-builder's file),
+ * which then has to be fetched from the same host.
+ *
  * The returned object is the surface `manageUpdates` (updater.cjs) drives: checkForUpdates,
- * downloadUpdate, quitAndInstall. A release is the repository's latest one; its `latest.yml` asset
- * carries the installer's name, size and sha512, and the download is checked against all three.
+ * downloadUpdate, quitAndInstall.
  */
 const { createHash } = require('node:crypto');
 const { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync } = require('node:fs');
@@ -15,7 +19,8 @@ const { get: httpsGet } = require('node:https');
 const { get: httpGet } = require('node:http');
 
 const USER_AGENT = 'coopanion-updater';
-const REQUEST_TIMEOUT_MS = 30_000;
+/** One metadata request; the download sets its own inactivity timeout on the socket. */
+const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_REDIRECTS = 5;
 
 /** The repository and the cache directory name `electron-builder` wrote into `app-update.yml`. */
@@ -72,7 +77,8 @@ function cancellationToken() {
   return token;
 }
 
-/** One GET, following redirects; the caller reads the stream. */
+/** One GET, following redirects; the caller reads the stream. The whole exchange has a deadline so a
+ * stalled connection fails instead of hanging the check. */
 function request(url, token, redirects = MAX_REDIRECTS) {
   return new Promise((resolve, reject) => {
     if (token?.cancelled) { reject(new Error('cancelled')); return; }
@@ -91,10 +97,16 @@ function request(url, token, redirects = MAX_REDIRECTS) {
       }
       resolve(res);
     });
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => req.destroy(new Error(`${url} timed out`)));
-    req.on('error', reject);
-    token?.onCancel(() => req.destroy(new Error('cancelled')));
+    deadline(req, REQUEST_TIMEOUT_MS, url, token, reject);
   });
+}
+
+/** Fails the request when it has not answered in time, and when it is cancelled. */
+function deadline(req, ms, url, token, reject) {
+  const timer = setTimeout(() => req.destroy(new Error(`${url} timed out`)), ms);
+  req.on('close', () => clearTimeout(timer));
+  req.on('error', (error) => { clearTimeout(timer); reject(error); });
+  token?.onCancel(() => req.destroy(new Error('cancelled')));
 }
 
 async function requestText(url, token) {
@@ -108,11 +120,11 @@ async function requestJson(url, token) {
   return JSON.parse(await requestText(url, token));
 }
 
-/** Streams `url` into `file.partial` with its hash; a cancelled or failed transfer leaves nothing behind. */
-async function downloadTo(url, file, token) {
+/** Streams `url` into `file.partial` while hashing it; a cancelled or failed transfer leaves nothing behind. */
+async function downloadTo(url, file, token, algorithm = 'sha512') {
   const partial = `${file}.partial`;
   rmSync(partial, { force: true });
-  const hash = createHash('sha512');
+  const hash = createHash(algorithm);
   const res = await request(url, token);
   const out = createWriteStream(partial);
   let size = 0;
@@ -127,13 +139,14 @@ async function downloadTo(url, file, token) {
       res.on('end', resolve);
       res.on('error', reject);
       out.on('error', reject);
+      res.setTimeout(60_000, () => res.destroy(new Error('the download stalled')));
       token?.onCancel(() => { res.destroy(new Error('cancelled')); reject(new Error('cancelled')); });
     });
   } finally {
     await new Promise((done) => out.end(done));
   }
   if (token?.cancelled) { rmSync(partial, { force: true }); throw new Error('cancelled'); }
-  return { file: partial, size, sha512: hash.digest('base64') };
+  return { file: partial, size, digest: algorithm === 'sha256' ? hash.digest('hex') : hash.digest('base64'), algorithm };
 }
 
 /**
@@ -149,52 +162,66 @@ function createNodeUpdater(options) {
   let lastCheck = null;
   let ready = null;
 
+  /** What the download is checked against: the asset's sha256 from the API, or latest.yml's sha512. */
+  const verification = async (assets, installer) => {
+    const digest = typeof installer.digest === 'string' ? installer.digest.replace(/^sha256:/, '') : '';
+    if (digest) return { algorithm: 'sha256', expected: digest };
+    const channelAsset = assets.find((asset) => asset.name === 'latest.yml');
+    if (!channelAsset) throw new Error('the release states no digest for its installer');
+    const channel = channelInfo(await requestText(channelAsset.browser_download_url, null));
+    return { algorithm: 'sha512', expected: channel.sha512 };
+  };
+
   const checkForUpdates = async () => {
     log('info', `checking for update as ${currentVersion}`);
-    let release;
     try {
-      release = await requestJson(releaseApi, null);
+      const release = await requestJson(releaseApi, null);
+      const version = String(release.tag_name ?? '').replace(/^v/, '');
+      if (!version) throw new Error('the latest release has no tag');
+      const assets = Array.isArray(release.assets) ? release.assets : [];
+      const installer = assets.find((asset) => /\.exe$/i.test(String(asset.name)) && !String(asset.name).endsWith('.blockmap'));
+      if (!installer) throw new Error('the latest release has no installer');
+      log('info', `latest release ${version}, ${installer.name} ${installer.size} bytes`);
+      if (!isNewer(version, currentVersion)) {
+        lastCheck = null;
+        return { isUpdateAvailable: false, updateInfo: { version: currentVersion } };
+      }
+      const check = await verification(assets, installer);
+      const result = {
+        isUpdateAvailable: true,
+        updateInfo: { version, name: installer.name, url: installer.browser_download_url, size: installer.size, ...check },
+        cancellationToken: cancellationToken(),
+      };
+      lastCheck = result;
+      return result;
     } catch (error) {
       log('error', `check failed: ${error instanceof Error ? error.message : error}`);
       throw error;
     }
-    const tag = String(release.tag_name ?? '').replace(/^v/, '');
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    const channelAsset = assets.find((asset) => asset.name === 'latest.yml');
-    if (!channelAsset) throw new Error('the latest release has no latest.yml');
-    const channel = channelInfo(await requestText(channelAsset.browser_download_url, null));
-    log('info', `latest release ${tag || channel.version}, latest.yml ${channel.version}`);
-    if (!isNewer(channel.version, currentVersion)) {
-      lastCheck = null;
-      return { isUpdateAvailable: false, updateInfo: { version: currentVersion } };
-    }
-    const installer = assets.find((asset) => asset.name === channel.url);
-    if (!installer) throw new Error(`the latest release has no ${channel.url}`);
-    const result = {
-      isUpdateAvailable: true,
-      updateInfo: { version: channel.version, name: channel.url, url: installer.browser_download_url, sha512: channel.sha512, size: channel.size },
-      cancellationToken: cancellationToken(),
-    };
-    lastCheck = result;
-    return result;
   };
 
   const downloadUpdate = async (token) => {
     if (!lastCheck?.isUpdateAvailable) throw new Error('no update was checked for');
-    const { version, name, url, sha512, size } = lastCheck.updateInfo;
+    const { version, name, url, size, algorithm, expected } = lastCheck.updateInfo;
     const pendingDir = join(cacheDir, 'pending');
     mkdirSync(pendingDir, { recursive: true });
     const file = join(pendingDir, name);
     log('info', `downloading ${version} from ${url}`);
     let got;
     try {
-      got = await downloadTo(url, file, token);
+      got = await downloadTo(url, file, token, algorithm);
     } catch (error) {
       log('error', `download failed: ${error instanceof Error ? error.message : error}`);
       throw error;
     }
-    if (got.size !== size) { rmSync(got.file, { force: true }); throw new Error(`downloaded ${got.size} bytes, expected ${size}`); }
-    if (got.sha512 !== sha512) { rmSync(got.file, { force: true }); throw new Error('downloaded file does not match latest.yml sha512'); }
+    if (got.size !== size) {
+      rmSync(got.file, { force: true });
+      throw new Error(`downloaded ${got.size} bytes, expected ${size}`);
+    }
+    if (got.digest !== expected) {
+      rmSync(got.file, { force: true });
+      throw new Error(`downloaded file does not match the release sha`);
+    }
     renameSync(got.file, file);
     ready = { file, version };
     log('info', `${version} downloaded to ${file}`);
