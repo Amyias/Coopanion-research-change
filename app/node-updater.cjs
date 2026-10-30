@@ -150,7 +150,14 @@ function createNodeUpdater(options) {
   let ready = null;
 
   const checkForUpdates = async () => {
-    const release = await requestJson(releaseApi, null);
+    log('info', `checking for update as ${currentVersion}`);
+    let release;
+    try {
+      release = await requestJson(releaseApi, null);
+    } catch (error) {
+      log('error', `check failed: ${error instanceof Error ? error.message : error}`);
+      throw error;
+    }
     const tag = String(release.tag_name ?? '').replace(/^v/, '');
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const channelAsset = assets.find((asset) => asset.name === 'latest.yml');
@@ -179,7 +186,13 @@ function createNodeUpdater(options) {
     mkdirSync(pendingDir, { recursive: true });
     const file = join(pendingDir, name);
     log('info', `downloading ${version} from ${url}`);
-    const got = await downloadTo(url, file, token);
+    let got;
+    try {
+      got = await downloadTo(url, file, token);
+    } catch (error) {
+      log('error', `download failed: ${error instanceof Error ? error.message : error}`);
+      throw error;
+    }
     if (got.size !== size) { rmSync(got.file, { force: true }); throw new Error(`downloaded ${got.size} bytes, expected ${size}`); }
     if (got.sha512 !== sha512) { rmSync(got.file, { force: true }); throw new Error('downloaded file does not match latest.yml sha512'); }
     renameSync(got.file, file);
@@ -190,7 +203,9 @@ function createNodeUpdater(options) {
 
   const quitAndInstall = (silent, runAfter) => {
     if (!ready) return;
-    const args = ['--updated', ...(silent ? ['/S'] : []), ...(runAfter ? ['--force-run'] : []), `/D=${installDir}`];
+    // no `--updated`: this setup aborts (exit 2) when the flag is passed; `/S` plus `--force-run` installs
+    // silently into the running program's directory and starts it again.
+    const args = [...(silent ? ['/S'] : []), ...(runAfter ? ['--force-run'] : []), `/D=${installDir}`];
     log('info', `installing ${ready.version}: ${ready.file} ${args.join(' ')}`);
     spawn(ready.file, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     ready = null;

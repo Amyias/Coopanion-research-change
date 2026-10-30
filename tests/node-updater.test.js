@@ -163,7 +163,7 @@ describe('the Node updater', () => {
     await updater.checkForUpdates();
     await updater.downloadUpdate(cancellationToken());
     updater.quitAndInstall(true, true);
-    expect(installers).toEqual([{ file: join(cache, 'pending', server.name), args: ['--updated', '/S', '--force-run', '/D=D:\\Coopanion'] }]);
+    expect(installers).toEqual([{ file: join(cache, 'pending', server.name), args: ['/S', '--force-run', '/D=D:\\Coopanion'] }]);
   });
 });
 
