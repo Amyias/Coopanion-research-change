@@ -1,8 +1,12 @@
 /**
- * Updates from the GitHub releases (electron-updater), where they can install themselves: the Windows
- * installer and the Linux AppImage. A macOS build is signed ad hoc, which Squirrel.Mac refuses to
- * install, and a deb belongs to the package manager; there the settings window's version line links
- * to a newer release.
+ * Updates from the GitHub releases where they can install themselves: the Windows installer and the
+ * Linux AppImage. A macOS build is signed ad hoc, which Squirrel.Mac refuses to install, and a deb
+ * belongs to the package manager; there the settings window's version line links to a newer release.
+ *
+ * On Windows the check and the download use Node's https (`node-updater.cjs`) rather than
+ * electron-updater's Electron network stack: Chromium's connections to github.com time out on machines
+ * where something intercepts TLS for programs that are not browsers. The installed setup is the app's
+ * own NSIS installer, run silently in the directory of the running program.
  *
  * While automatic updates are enabled, a newer release downloads in the background. Each step goes
  * to the Core (`tell`), which says it in the bubble, and to the settings window's version line: downloading, downloaded
@@ -13,6 +17,7 @@
  */
 const { createWriteStream, mkdirSync } = require('node:fs');
 const { dirname, join } = require('node:path');
+const { createNodeUpdater, releaseSource } = require('./node-updater.cjs');
 
 const RELEASES_URL = 'https://github.com/Amyias/Coopanion-research-change/releases/latest';
 /** Releases come out at most a few times a day; a run left open for days still hears of them the same day. */
@@ -29,10 +34,26 @@ function canUpdate() {
  * clears a cancelled update. `setEnabled(false)` cancels downloads and prevents installation on quit.
  */
 function startUpdater({ logDir, tell, enabled }) {
-  const { autoUpdater } = require('electron-updater');
+  const { app } = require('electron');
   mkdirSync(logDir, { recursive: true });
   const log = createWriteStream(join(logDir, 'updater.log'), { flags: 'a' });
   const line = (level) => (...args) => log.write(`${new Date().toISOString()} ${level} ${args.map(String).join(' ')}\n`);
+
+  if (process.platform === 'win32') {
+    const source = releaseSource(join(process.resourcesPath, 'app-update.yml'));
+    return manageUpdates(createNodeUpdater({
+      owner: source.owner,
+      repo: source.repo,
+      currentVersion: app.getVersion(),
+      // the cache electron-updater used, so an update already downloaded there is not fetched again
+      cacheDir: join(process.env.LOCALAPPDATA ?? app.getPath('userData'), source.cacheDirName),
+      installDir: dirname(process.execPath),
+      log: line,
+      spawn: require('node:child_process').spawn,
+    }), { tell, enabled });
+  }
+
+  const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = { info: line('info'), warn: line('warn'), error: line('error'), debug: line('debug') };
   // electron-updater emits `error` for failed checks, downloads and installer launches; without a listener the emit throws
   autoUpdater.on('error', line('error'));
