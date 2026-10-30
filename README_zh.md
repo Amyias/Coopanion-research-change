@@ -42,7 +42,7 @@ Coopanion 是一个桌宠。桌宠 **Coo** 待在屏幕底边，可以用气泡�
 ## 功能
 
 - **多家模型**：DeepSeek、通义千问、Kimi、智谱 GLM、豆包、MiniMax、阶跃星辰、百度千帆、OpenRouter、OpenAI、Anthropic、Gemini、xAI。选一家，贴上 API Key 就能用；也可以登录 ChatGPT 账号，使用它的 ChatGPT 套餐。
-- **聊天**：按说话键说话，或者打字，Coo 在气泡里回复。语音在本机用 FunASR 或 Whisper 识别。
+- **聊天**：按说话键说话，或者打字，Coo 在气泡里回复。语音在本机用 FunASR 或 Whisper 识别。她发来的图片也显示在气泡里，可以一张张翻看、点开看大图。
 - **记忆**：记得聊过的内容，也知道你戳了它、摸了它的头。它对你的了解写在工作区的 `PARTNER.md`，工作区每次改动都记成一个版本（Windows 版自带 git，macOS 和 Linux 要系统里装有 git）。
 - **操作电脑**：点按钮、打字、切窗口。动手前先问你。
 - **联网搜索**：遇到不确定或刚发生的事，Coo 自己上网搜，用带来源的结果回答，不用操作电脑；你给它一个链接，它也能把那一页读下来；链接指向图片时，它把图取回来交给你，能看也能转发。要一张现成的图就让它搜：它去 Pexels 或 Pixabay 找，把图取回来（在 https://pixabay.com/api/docs/ 登录后复制自己的 key，写进 `data/home/companion/.env` 的 `PIXABAY_API_KEY`）。搜索服务可用 Brave Search 或 DeepSeek，密钥在高级模式「World 总览」的 WebSearch 里填，也可以放在 `BRAVE_API_KEY` 或 `DEEPSEEK_SEARCH_API_KEY` 环境变量里。

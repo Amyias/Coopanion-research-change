@@ -42,7 +42,7 @@ Coopanion is a desktop pet. **Coo** lives on the bottom edge of your screen: it 
 ## Features
 
 - **Many model services**: OpenAI, Anthropic, Gemini, xAI, OpenRouter, DeepSeek, Kimi, Qwen, MiniMax, Zhipu GLM, Doubao, Baidu Qianfan and StepFun with an API key, or a ChatGPT account through its ChatGPT plan.
-- **Chat**: hold the talk key and speak, or type; Coo answers in a bubble. Speech is recognized on your machine with FunASR or Whisper.
+- **Chat**: hold the talk key and speak, or type; Coo answers in a bubble. Speech is recognized on your machine with FunASR or Whisper. Pictures Coo sends show in the bubble too: page through them, and click one to see it enlarged.
 - **Memory**: Coo remembers what you talked about and when you poke it or pat its head. What it knows about you goes in `PARTNER.md` in its workspace, and every change to the workspace is kept as a version (the Windows build carries git; on macOS and Linux git has to be installed).
 - **Computer use**: clicking buttons, typing, switching windows. Coo asks before it acts.
 - **Web search**: for something new or uncertain, Coo searches the web itself and answers from results with their sources, without using the computer; handed a link, it reads that page too; handed a link to a picture, it brings the picture back for you to see and pass on. Ask for a picture of something and it searches Pexels or Pixabay for one (log in at https://pixabay.com/api/docs/, copy your key, and put it in `data/home/companion/.env` as `PIXABAY_API_KEY`). The search service is Brave Search or DeepSeek; the key goes on the WebSearch page under World overview in the advanced mode, or in `BRAVE_API_KEY` or `DEEPSEEK_SEARCH_API_KEY`.
