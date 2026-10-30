@@ -409,7 +409,7 @@ function forward(request, url, origin) {
   });
 }
 
-/** The only remote address the settings page asks: the latest Coopanion release, for the hint under the wordmark. */
+/** The latest Coopanion release, for the update status in the settings window's title bar. */
 const RELEASE_CHECK = 'https://api.github.com/repos/Amyias/Coopanion-research-change/releases/latest';
 /** Images of the extension market: package icons and screenshots of the official index, and GitHub avatars. */
 const MARKET_IMAGES = ['https://raw.githubusercontent.com/Pal-AI-Lab/cortico-extensions/', 'https://avatars.githubusercontent.com/'];
