@@ -187,6 +187,15 @@ body.desk .floor{display:none}
 .b-arrow{width:calc(22px * var(--bubble-size, 1)); height:calc(22px * var(--bubble-size, 1)); padding:0; border:0; border-radius:50%; background:transparent; color:var(--said-ink); cursor:pointer; font:inherit; line-height:1}
 .b-arrow:disabled{opacity:.35; cursor:default}
 .b-count{font-size:calc(12px * var(--bubble-font, 1)); color:var(--muted); font-variant-numeric:tabular-nums}
+/* a picture shown enlarged over the pet window */
+.lightbox{position:fixed; inset:0; z-index:9; display:grid; place-items:center; background:rgba(4, 8, 14, .72)}
+.lightbox[hidden]{display:none}
+.lb-pic{max-width:92vw; max-height:86vh; object-fit:contain; border-radius:calc(12px * var(--bubble-size, 1)); box-shadow:0 18px 60px rgba(0, 0, 0, .55)}
+.lb-close{position:fixed; top:calc(14px * var(--bubble-size, 1)); right:calc(14px * var(--bubble-size, 1)); width:calc(34px * var(--bubble-size, 1)); height:calc(34px * var(--bubble-size, 1)); padding:0; border:0; border-radius:50%; background:rgba(255, 255, 255, .14); color:#fff; font-size:calc(20px * var(--bubble-size, 1)); line-height:1; cursor:pointer}
+.lb-caro{position:fixed; bottom:calc(18px * var(--bubble-size, 1)); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:calc(14px * var(--bubble-size, 1)); color:#fff}
+.lb-arrow{width:calc(32px * var(--bubble-size, 1)); height:calc(32px * var(--bubble-size, 1)); padding:0; border:0; border-radius:50%; background:rgba(255, 255, 255, .14); color:#fff; font-size:calc(20px * var(--bubble-size, 1)); line-height:1; cursor:pointer}
+.lb-arrow:disabled{opacity:.35; cursor:default}
+.lb-count{font-size:calc(13px * var(--bubble-font, 1)); font-variant-numeric:tabular-nums}
 .b-foot{display:flex; align-items:center; gap:8px; margin-top:2px}
 .b-foot .b-hint{flex:1; margin-top:0}
 .b-cancel{flex:none; font:inherit; font-size:calc(12px * var(--bubble-font, 1)); padding:2px 9px; border-radius:8px; border:1.5px solid var(--line); background:none; color:var(--muted); cursor:pointer}

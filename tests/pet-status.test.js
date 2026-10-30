@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { clamp, f, ICONS, linked } from '../packages/cortico-world-desktop-pet/web/ui.js';
 import { COO_CSS, mini, normalizeSkin, skinCss } from '../packages/cortico-world-desktop-pet/web/coo/coo.js';
 import { t } from '../packages/cortico-world-desktop-pet/web/i18n.js';
-import { carouselHtml, clampIndex } from '../packages/cortico-world-desktop-pet/web/say-images.js';
+import { carouselHtml, clampIndex, lightboxHtml } from '../packages/cortico-world-desktop-pet/web/say-images.js';
 
 const WEB = new URL('../packages/cortico-world-desktop-pet/web/', import.meta.url);
 const source = readFileSync(new URL('pet-app.js', WEB), 'utf8').replace(/^import .*;$/gm, '');
@@ -37,12 +37,12 @@ function page({ host = false, hash = '' } = {}) {
     createSpeech: () => ({ configure() {}, begin() {}, reveal() { return false; }, stop() {}, active: false }),
     textSteps: () => 1,
     loadBody: async () => body, body,
-    t, language: () => 'zh', useLanguage: async () => {}, carouselHtml, clampIndex,
+    t, language: () => 'zh', useLanguage: async () => {}, carouselHtml, clampIndex, lightboxHtml,
     // the tab's stage (stage.js) is decoration the activity bubble does not depend on
     lightWall() {}, dressFloor() {}, modeButton: () => ({ show() {} }), glowColor: () => null, setGlow() {}, bindAppearance() {}, announcePainted() {},
     createMic: () => ({ start() {}, stop() {} }),
   };
-  win.eval(`const { applyTheme, clamp, f, ICONS, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic, carouselHtml, clampIndex } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, closeBubble, step: (dt) => { T += dt; stepDialog(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES };`);
+  win.eval(`const { applyTheme, clamp, f, ICONS, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic, carouselHtml, clampIndex, lightboxHtml } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, closeBubble, step: (dt) => { T += dt; stepDialog(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES };`);
   return { ...win.page, bubble: win.document.querySelector('#bubble'), bodyChanges, doc: win.document, sockets, win };
 }
 
@@ -284,5 +284,34 @@ describe('pictures in a say bubble', () => {
     said(p, [pictures[0]]);
     expect(p.bubble.querySelector('.b-pics img')).not.toBeNull();
     expect(p.bubble.querySelector('.b-caro')).toBeNull();
+  });
+
+  it('opens the enlarged picture, turns it with the arrows and closes with Escape', () => {
+    const p = page();
+    said(p);
+    p.bubble.querySelector('.b-pics img').click();
+    const box = p.doc.querySelector('#lightbox');
+    expect(box.hidden).toBe(false);
+    expect(p.overUi(box)).toBe(true);
+    expect(box.querySelector('.lb-pic').getAttribute('src')).toBe('/say-image/a');
+    box.querySelector('[data-lightbox="next"]').click();
+    expect(box.querySelector('.lb-pic').getAttribute('src')).toBe('/say-image/b');
+    expect(box.querySelector('.lb-count').textContent).toBe('2 / 2');
+    p.doc.dispatchEvent(new p.win.KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(box.hidden).toBe(true);
+    expect(box.innerHTML).toBe('');
+  });
+
+  it('closes the enlarged picture on the backdrop and when a new line arrives', () => {
+    const p = page();
+    said(p);
+    p.bubble.querySelector('.b-pics img').click();
+    const box = p.doc.querySelector('#lightbox');
+    box.click();
+    expect(box.hidden).toBe(true);
+    p.bubble.querySelector('.b-pics img').click();
+    expect(box.hidden).toBe(false);
+    p.onOrder({ t: 'say', id: 's2', beats: [{ text: '', actions: [], anchors: [] }], images: pictures });
+    expect(box.hidden).toBe(true);
   });
 });

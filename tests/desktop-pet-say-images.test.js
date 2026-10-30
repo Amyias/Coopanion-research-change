@@ -4,7 +4,7 @@
  * hostile token does to the markup.
  */
 import { describe, expect, it } from 'vitest';
-import { carouselHtml, clampIndex } from '../packages/cortico-world-desktop-pet/web/say-images.js';
+import { carouselHtml, clampIndex, lightboxHtml } from '../packages/cortico-world-desktop-pet/web/say-images.js';
 
 const text = {
   'say.imageAlt': 'An image',
@@ -57,5 +57,29 @@ describe('carouselHtml', () => {
     const img = document.querySelector('img');
     expect(img.getAttribute('onerror')).toBeNull();
     expect(img.getAttribute('src')).toContain('a%22%20onerror%3D%22alert(1)');
+  });
+});
+
+describe('lightboxHtml', () => {
+  const images = [{ token: 'a' }, { token: 'b' }];
+
+  it('shows the picture at the index with its count and arrows', () => {
+    document.body.innerHTML = lightboxHtml(images, 1, t);
+    expect(document.querySelector('.lb-pic').getAttribute('src')).toBe('/say-image/b');
+    expect(document.querySelector('.lb-count').textContent).toBe('2 / 2');
+    expect(document.querySelector('[data-lightbox="prev"]').disabled).toBe(false);
+    expect(document.querySelector('[data-lightbox="next"]').disabled).toBe(true);
+    expect(document.querySelector('[data-lightbox="close"]')).not.toBeNull();
+  });
+
+  it('gives a single picture a close button and no arrows', () => {
+    document.body.innerHTML = lightboxHtml([images[0]], 0, t);
+    expect(document.querySelector('.lb-pic')).not.toBeNull();
+    expect(document.querySelector('.lb-caro')).toBeNull();
+    expect(document.querySelector('[data-lightbox="close"]')).not.toBeNull();
+  });
+
+  it('renders nothing without pictures', () => {
+    expect(lightboxHtml([], 0, t)).toBe('');
   });
 });

@@ -19,7 +19,7 @@ import { loadBody } from './body-host.js';
 import { accentColors, announcePainted, bubbleCss, dressFloor, glowColor, lightWall, modeButton, setGlow } from './stage.js';
 import { bindAppearance } from './appearance.js';
 import { createMic } from './mic.js';
-import { carouselHtml, clampIndex } from './say-images.js';
+import { carouselHtml, clampIndex, lightboxHtml } from './say-images.js';
 
 const $ = (s) => document.querySelector(s);
 const host = window.petHost || null;
@@ -27,7 +27,7 @@ const windowKey = host ? new URLSearchParams(location.hash.slice(1)).get('key') 
 document.body.classList.add(host ? 'desk' : 'tab');
 
 const stage = $('#stage');
-const bubble = $('#bubble'), menu = $('#menu');
+const bubble = $('#bubble'), menu = $('#menu'), lightbox = $('#lightbox');
 const tools = $('#tools');
 // Coo's drawing classes for the menu's avatar; the bubbles and buttons take their colours from Coo's palette
 // another pack's body sets the theme color instead (accentStyle, after skinStyle so it wins)
@@ -311,7 +311,7 @@ function onOrder(m) {
     // the settings window's 「在桌面上隐藏」: the same as the menu's 「隐藏」
     case 'hide': host?.hide?.(); break;
     case 'type': openTyping(); break;
-    case 'say': dropAsks(); queue.push({ kind: 'say', id: m.id, beats: m.beats, images: Array.isArray(m.images) ? m.images : [], i: -1 }); holdRoam(20); break;
+    case 'say': dropAsks(); closeEnlarged(); queue.push({ kind: 'say', id: m.id, beats: m.beats, images: Array.isArray(m.images) ? m.images : [], i: -1 }); holdRoam(20); break;
     case 'ask': dropAsks(); queue.push({ kind: 'ask', id: m.id, question: m.question, options: m.options || [], own: m.own !== false }); holdRoam(20); break;
     case 'confirm': dropAsks(); queue.push({ kind: 'ask', confirm: true, id: m.id, question: m.question, options: m.options, own: false }); holdRoam(20); break;
     case 'walk': walk(m); break;
@@ -386,6 +386,12 @@ const queue = [];
 let item = null;
 /** The arrows of a say bubble's pictures: the bubble outlives its lines, so one listener serves them all. */
 bubble.addEventListener('click', (event) => {
+  const picture = event.target.closest?.('.b-pics img');
+  if (picture && item && item.kind === 'say' && item.images?.length) {
+    event.stopPropagation();
+    openEnlarged(item.images, item.imageIndex);
+    return;
+  }
   const button = event.target.closest?.('[data-carousel]');
   if (!button || button.disabled || !item || item.kind !== 'say' || !item.images?.length) return;
   event.stopPropagation();
@@ -393,6 +399,38 @@ bubble.addEventListener('click', (event) => {
   const pictures = bubble.querySelector('.b-images');
   if (pictures) pictures.outerHTML = carouselHtml(item.images, item.imageIndex, t);
   sfx.tick();
+});
+
+/* ---------- a picture, enlarged ---------- */
+/** The pictures the enlarged view is showing, and which one; null while it is closed. */
+let enlarged = null;
+function drawEnlarged() {
+  if (enlarged) lightbox.innerHTML = lightboxHtml(enlarged.images, enlarged.index, t);
+}
+function openEnlarged(images, index) {
+  enlarged = { images, index: clampIndex(index, images.length) };
+  lightbox.hidden = false;
+  drawEnlarged();
+  sfx.tick();
+}
+function closeEnlarged() {
+  if (lightbox.hidden) return;
+  lightbox.hidden = true;
+  lightbox.innerHTML = '';
+  enlarged = null;
+}
+function pageEnlarged(step) {
+  if (!enlarged) return;
+  enlarged.index = clampIndex(enlarged.index + step, enlarged.images.length);
+  drawEnlarged();
+  sfx.tick();
+}
+lightbox.addEventListener('click', (event) => {
+  if (event.target === lightbox) { closeEnlarged(); return; }
+  const control = event.target.closest?.('[data-lightbox]')?.dataset.lightbox;
+  if (control === 'close') closeEnlarged();
+  else if (control === 'prev') pageEnlarged(-1);
+  else if (control === 'next') pageEnlarged(1);
 });
 /** Where typing pauses: sentence and clause marks, Latin and full-width (Chinese and Japanese share 。、). */
 const PAUSE = /[,.!?;:…，。！？；：、]/, SILENT = /[\s,.!?;:…，。！？；：、「」『』()（）]/;
@@ -1494,7 +1532,7 @@ function writePointer(now) {
   diag.types.clear();
 }
 
-const UI_SELECTOR = '.bubble:not(.status):not(.fading):not([hidden]), .menu:not([hidden]), .tools:not([hidden])';
+const UI_SELECTOR = '.bubble:not(.status):not(.fading):not([hidden]), .menu:not([hidden]), .tools:not([hidden]), .lightbox:not([hidden])';
 const overUi = (e) => e.target.closest && e.target.closest(UI_SELECTOR);
 document.addEventListener('pointermove', (e) => {
   pointerSeen = true;
@@ -1622,6 +1660,11 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('keydown', (e) => {
   // Escape and number keys belong to the input method while choosing a candidate.
   if (e.isComposing || e.keyCode === 229) return;
+  if (!lightbox.hidden) {
+    if (e.key === 'Escape') { e.preventDefault(); closeEnlarged(); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); pageEnlarged(-1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); pageEnlarged(1); return; }
+  }
   if (e.key === 'Escape') {
     closeMenu();
     if (item && item.kind === 'ask') dismissAsk();

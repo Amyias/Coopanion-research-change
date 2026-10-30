@@ -28,3 +28,20 @@ export function carouselHtml(images, index, t) {
     : '';
   return `<div class="b-images"><div class="b-pics"><img src="${src}" alt="${alt}" draggable="false"></div>${arrows}</div>`;
 }
+
+/** The enlarged view of one picture: the picture at the index, arrows when there is more than one, and a close button. */
+export function lightboxHtml(images, index, t) {
+  if (!images.length) return '';
+  const at = clampIndex(index, images.length);
+  const src = `/say-image/${encodeURIComponent(images[at].token)}`;
+  const alt = escapeHtml(t('say.imageAlt'));
+  const arrows = images.length > 1
+    ? `<div class="lb-caro">`
+      + `<button type="button" class="lb-arrow" data-lightbox="prev" aria-label="${escapeHtml(t('say.previous'))}"${at === 0 ? ' disabled' : ''}>‹</button>`
+      + `<span class="lb-count">${at + 1} / ${images.length}</span>`
+      + `<button type="button" class="lb-arrow" data-lightbox="next" aria-label="${escapeHtml(t('say.next'))}"${at === images.length - 1 ? ' disabled' : ''}>›</button>`
+      + '</div>'
+    : '';
+  return `<img class="lb-pic" src="${src}" alt="${alt}">`
+    + `<button type="button" class="lb-close" data-lightbox="close" aria-label="${escapeHtml(t('bubble.close'))}">×</button>${arrows}`;
+}
