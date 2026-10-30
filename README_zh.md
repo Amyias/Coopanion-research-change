@@ -45,7 +45,7 @@ Coopanion 是一个桌宠。桌宠 **Coo** 待在屏幕底边，可以用气泡�
 - **聊天**：按说话键说话，或者打字，Coo 在气泡里回复。语音在本机用 FunASR 或 Whisper 识别。
 - **记忆**：记得聊过的内容，也知道你戳了它、摸了它的头。它对你的了解写在工作区的 `PARTNER.md`，工作区每次改动都记成一个版本（Windows 版自带 git，macOS 和 Linux 要系统里装有 git）。
 - **操作电脑**：点按钮、打字、切窗口。动手前先问你。
-- **联网搜索**：遇到不确定或刚发生的事，Coo 自己上网搜，用带来源的结果回答，不用操作电脑；你给它一个链接，它也能把那一页读下来；链接指向图片时，它把图取回来交给你，能看也能转发。要一张现成的图就让它搜：它去 Pexels 或 Pixabay 找，把图取回来（把任意一个免费 key 写进 `data/home/companion/.env` 的 `PEXELS_API_KEY` 或 `PIXABAY_API_KEY`）。搜索服务可用 Brave Search 或 DeepSeek，密钥在高级模式「World 总览」的 WebSearch 里填，也可以放在 `BRAVE_API_KEY` 或 `DEEPSEEK_SEARCH_API_KEY` 环境变量里。
+- **联网搜索**：遇到不确定或刚发生的事，Coo 自己上网搜，用带来源的结果回答，不用操作电脑；你给它一个链接，它也能把那一页读下来；链接指向图片时，它把图取回来交给你，能看也能转发。要一张现成的图就让它搜：它去 Pexels 或 Pixabay 找，把图取回来（在 https://pixabay.com/api/docs/ 登录后复制自己的 key，写进 `data/home/companion/.env` 的 `PIXABAY_API_KEY`）。搜索服务可用 Brave Search 或 DeepSeek，密钥在高级模式「World 总览」的 WebSearch 里填，也可以放在 `BRAVE_API_KEY` 或 `DEEPSEEK_SEARCH_API_KEY` 环境变量里。
 - **状态气泡**：想事情、看文件、搜索、写入、操作电脑时，头顶用小图标和动画显示在做什么。
 - **形象**：Coo，或者 **DeepSeek 大肥鱼**（全动态的鲸鱼娘，八套厂商配色，三套服装）。其他形象包在「装扮」页导入（见[形象包兼容承诺](packages/cortico-world-desktop-pet/README.md#形象包兼容承诺)）。
 - **装扮**：Coo 的配色（含灯、杯、铸、心、冬五种「性相」配色）、帽子、耳饰、眼镜、颈饰，以及大小和走动频率。
