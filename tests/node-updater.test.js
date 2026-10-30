@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -99,7 +99,7 @@ describe('the Node updater', () => {
     closing.push(() => rmSync(dir, { recursive: true, force: true }));
     const file = join(dir, 'app-update.yml');
     expect(releaseSource(file)).toMatchObject({ owner: 'Amyias', repo: 'Coopanion-research-change' });
-    require('node:fs').writeFileSync(file, 'owner: someone\nrepo: something\nprovider: github\nupdaterCacheDirName: my-updater\n');
+    writeFileSync(file, 'owner: someone\nrepo: something\nprovider: github\nupdaterCacheDirName: my-updater\n');
     expect(releaseSource(file)).toEqual({ owner: 'someone', repo: 'something', cacheDirName: 'my-updater' });
   });
 

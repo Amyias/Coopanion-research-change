@@ -152,6 +152,12 @@ async function downloadTo(url, file, token, algorithm = 'sha512') {
 /**
  * The updater object `manageUpdates` drives. `log` writes one line to `updater.log`; `spawn` is
  * `child_process.spawn`, injected so a test can read the install command instead of running it.
+ *
+ * @param {{ owner: string, repo: string, currentVersion: string, cacheDir: string, installDir: string,
+ *   log?: (level: string, message: string) => void, spawn: typeof import('node:child_process').spawn,
+ *   releaseApi?: string }} options
+ * @returns {{ checkForUpdates: () => Promise<object>, downloadUpdate: (token?: object) => Promise<string[]>,
+ *   quitAndInstall: (silent: boolean, runAfter?: boolean) => void }}
  */
 function createNodeUpdater(options) {
   const {
@@ -241,4 +247,4 @@ function createNodeUpdater(options) {
   return { autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates, downloadUpdate, quitAndInstall };
 }
 
-module.exports = { createNodeUpdater, channelInfo, isNewer, releaseSource, cancellationToken, downloadTo, request, requestJson, requestText, MAX_REDIRECTS };
+module.exports = { createNodeUpdater, channelInfo, isNewer, releaseSource, cancellationToken };
