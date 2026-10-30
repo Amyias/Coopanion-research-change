@@ -63,7 +63,7 @@ $env:CORTICO_COMPANION_DATA = "$env:TEMP\coo-test"; pnpm run start
 
 Cortico 是内核,Coopanion 是用它做的一个产品。使用者看到的界面按下面分工:
 
-- **Coopanion 只渲染自己绑定的 World**:桌宠 World(含电脑操作)、`coopanion` World 和控制台 World。另挂 Cortico 自带的 WebSearch World 给 Coo 搜索用、`web-fetch` World 给它读网页和取网图,它们都没有普通模式的入口,配置页只在高级模式的 World 总览里。应用壳和这些 World 之间的接口(比如桌宠 World 的 `PetBotControls`)归 Coopanion 所有，随产品需要修改，不属于 Cortico 的契约。
+- **Coopanion 只渲染自己绑定的 World**:桌宠 World(含电脑操作)、`coopanion` World 和控制台 World。另挂 Cortico 自带的 WebSearch World 给 Coo 搜索用、`web-fetch` World 给它读网页和取网图,它们都没有普通模式的入口,配置页只在高级模式的 World 总览里;`web-fetch` 也声明了自己的面板(两个状态灯、密钥徽章、快速配置页签与设置组)。应用壳和这些 World 之间的接口(比如桌宠 World 的 `PetBotControls`)归 Coopanion 所有，随产品需要修改，不属于 Cortico 的契约。
 - **应用壳不为其他 World 提供界面入口。** 桌宠菜单和设置窗口的普通模式里，不放扩展提供的按钮、页面或菜单项。高级模式的扩展页、World 总览等页面复制自 Cortico WebUI,是给开发者用的，扩展 World 用 `webUi()` 声明的面板和链接显示在那里。
 - **扩展 World 想让使用者看到内容，走下面两条路之一:**
   - **经过 Bot。** World 给 Bot 提供读写内容的工具，把使用者需要知道的事投递成事件,Coo 再用桌宠的气泡、选项和对话页告诉使用者。怎么呈现由桌宠 World 决定;呈现能力不够时扩充桌宠 World,不对扩展开放。适合偶尔看一眼的内容。
