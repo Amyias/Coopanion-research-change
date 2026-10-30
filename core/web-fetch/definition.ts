@@ -28,12 +28,9 @@ export const WEB_FETCH: WorldDefinition<WebFetchConfigSection> = {
   defaults: () => ({ ...WEB_FETCH_DEFAULTS }),
   create: (ctx) =>
     new WebFetchWorld({
-      baseUrl: ctx.cfg.baseUrl ?? WEB_FETCH_DEFAULTS.baseUrl,
-      timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
-      maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-      imageMaxBytes: ctx.cfg.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
-      maxImageResults: ctx.cfg.maxImageResults ?? WEB_FETCH_DEFAULTS.maxImageResults,
+      cfg: ctx.cfg,
       secret: (name) => ctx.secret(name),
+      storeSecret: (name, value) => ctx.storeSecret(name, value),
     }),
   describe: DESCRIBE,
 };

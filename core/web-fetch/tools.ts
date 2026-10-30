@@ -1,6 +1,6 @@
 /** The tools of the `web-fetch` World: `web_fetch` reads one page as Markdown through DeepSeek's Fetch API. */
 import type { ToolDef } from 'cortico/core/types.ts';
-import { WEB_FETCH_DEFAULTS, WEB_FETCH_PEXELS_SECRET, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET } from './config.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_PEXELS_SECRET, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, type WebFetchConfigSection } from './config.ts';
 import { ImageError, readImage, type ImageFailure, type ImageResult } from './image.ts';
 import { ImageSearchError, searchImages, type ImageHit } from './image-search.ts';
 
@@ -9,12 +9,10 @@ const URL_MAX = 8192;
 const RETRY_DELAYS_MS = [1000, 3000];
 
 export interface WebFetchOptions {
-  baseUrl: string;
-  timeoutMs: number;
-  maxChars: number;
-  imageMaxBytes: number;
-  maxImageResults: number;
+  /** The live `worlds.web-fetch` section: a change in the panel takes effect on the next call. */
+  cfg: WebFetchConfigSection;
   secret(name: string): string;
+  storeSecret(name: string, value: string): void;
   /** Tests read from a server on this machine; the definition never sets it. */
   allowLocal?: boolean;
   /** Tests point a provider at a local server; the definition never sets them. */
@@ -106,11 +104,11 @@ function fetchableUrl(raw: string): string | null {
 
 async function fetchPage(opts: WebFetchOptions, key: string, url: string): Promise<{ title: string; content: string }> {
   let lastError: unknown;
-  const base = (opts.baseUrl.trim() || WEB_FETCH_DEFAULTS.baseUrl).replace(/\/+$/, '');
+  const base = (opts.cfg.baseUrl.trim() || WEB_FETCH_DEFAULTS.baseUrl).replace(/\/+$/, '');
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) await new Promise((done) => setTimeout(done, RETRY_DELAYS_MS[attempt - 1]));
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), opts.timeoutMs);
+    const timer = setTimeout(() => abort.abort(), opts.cfg.timeoutMs);
     try {
       const res = await fetch(`${base}/v1/tools/fetch`, {
         method: 'POST',
@@ -159,8 +157,8 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
         return `[fetch failed] ${error instanceof Error ? error.message : String(error)}`;
       }
       if (!page.content) return `[fetch failed] no content returned for ${url}`;
-      const content = page.content.length > opts.maxChars
-        ? `${page.content.slice(0, opts.maxChars)}\n…(truncated: ${page.content.length} characters in all)`
+      const content = page.content.length > opts.cfg.maxChars
+        ? `${page.content.slice(0, opts.cfg.maxChars)}\n…(truncated: ${page.content.length} characters in all)`
         : page.content;
       return [`web_fetch: ${url}`, page.title || '(untitled)', '', content].join('\n');
     },
@@ -183,8 +181,8 @@ export function imageFetchTool(opts: WebFetchOptions): ToolDef {
       let image: ImageResult;
       try {
         image = await readImage(url, {
-          timeoutMs: opts.timeoutMs,
-          maxBytes: opts.imageMaxBytes,
+          timeoutMs: opts.cfg.timeoutMs,
+          maxBytes: opts.cfg.imageMaxBytes,
           ...(opts.allowLocal ? { allowLocal: true } : {}),
         });
       } catch (error) {
@@ -212,8 +210,8 @@ export function searchImagesTool(opts: WebFetchOptions): ToolDef {
       let hits: ImageHit[];
       try {
         hits = await searchImages(query, {
-          maxResults: opts.maxImageResults,
-          timeoutMs: opts.timeoutMs,
+          maxResults: opts.cfg.maxImageResults,
+          timeoutMs: opts.cfg.timeoutMs,
           pexelsKey: opts.secret(WEB_FETCH_PEXELS_SECRET).trim(),
           pixabayKey: opts.secret(WEB_FETCH_PIXABAY_SECRET).trim(),
           ...(opts.pexelsBase ? { pexelsBase: opts.pexelsBase } : {}),

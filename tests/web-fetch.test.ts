@@ -51,6 +51,7 @@ async function serveGet(handler: (path: string, res: ServerResponse) => void): P
 }
 
 const options = (overrides: {
+  baseUrl?: string;
   maxChars?: number;
   imageMaxBytes?: number;
   maxImageResults?: number;
@@ -61,24 +62,28 @@ const options = (overrides: {
   pexelsBase?: string;
   pixabayBase?: string;
 } = {}) => ({
-  baseUrl: '',
-  timeoutMs: 5000,
-  maxChars: overrides.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-  imageMaxBytes: overrides.imageMaxBytes ?? WEB_FETCH_DEFAULTS.imageMaxBytes,
-  maxImageResults: overrides.maxImageResults ?? WEB_FETCH_DEFAULTS.maxImageResults,
+  cfg: {
+    ...WEB_FETCH_DEFAULTS,
+    baseUrl: overrides.baseUrl ?? '',
+    timeoutMs: 5000,
+    ...(overrides.maxChars !== undefined ? { maxChars: overrides.maxChars } : {}),
+    ...(overrides.imageMaxBytes !== undefined ? { imageMaxBytes: overrides.imageMaxBytes } : {}),
+    ...(overrides.maxImageResults !== undefined ? { maxImageResults: overrides.maxImageResults } : {}),
+  },
   secret: (name: string) => {
     if (name === WEB_FETCH_SECRET) return overrides.secret ?? 'test-key';
     if (name === WEB_FETCH_PEXELS_SECRET) return overrides.pexelsKey ?? '';
     if (name === WEB_FETCH_PIXABAY_SECRET) return overrides.pixabayKey ?? '';
     return '';
   },
+  storeSecret: () => {},
   allowLocal: overrides.allowLocal !== false,
   ...(overrides.pexelsBase ? { pexelsBase: overrides.pexelsBase } : {}),
   ...(overrides.pixabayBase ? { pixabayBase: overrides.pixabayBase } : {}),
 });
 
 function tool(baseUrl: string, overrides: { maxChars?: number; secret?: string } = {}) {
-  return webFetchTool({ ...options(overrides), baseUrl });
+  return webFetchTool(options({ ...overrides, baseUrl }));
 }
 
 /** The image tools' options: they read from the same local server the page tests use. */
@@ -268,9 +273,83 @@ describe('web_search_images', () => {
   });
 });
 
+/** A World whose secrets can change, as the settings page's setKey does. */
+function settingsWorld(keys: Record<string, string> = {}) {
+  const secrets: Record<string, string> = { ...keys };
+  const stored: Array<[string, string]> = [];
+  const world = WEB_FETCH.create({
+    cfg: { ...WEB_FETCH_DEFAULTS },
+    secret: (name: string) => secrets[name] ?? '',
+    storeSecret: (name: string, value: string) => { secrets[name] = value; stored.push([name, value]); },
+  } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
+  return { world, secrets, stored };
+}
+
+describe('the settings page', () => {
+  it('shows a lamp per capability and a badge per key', () => {
+    const { world } = settingsWorld({ [WEB_FETCH_PIXABAY_SECRET]: 'abcdefghijklmnop' });
+    const ui = world.webUi!('en');
+    expect(ui.label).toBe('WebFetch');
+    expect(ui.lamps?.map((lamp) => [lamp.label, lamp.state])).toEqual([['Pages', 'offline'], ['Pictures', 'online']]);
+    expect(ui.badges?.map((badge) => [badge.label, badge.value])).toEqual([
+      ['Page key', 'none'],
+      ['Pixabay key', 'Set'],
+      ['Pexels key', 'none'],
+    ]);
+  });
+
+  it('never returns a whole key, only its masked form', async () => {
+    const { world } = settingsWorld({ [WEB_FETCH_PIXABAY_SECRET]: 'abcdefghijklmnop' });
+    const state = await world.webUi!().invoke!('setup', 'state', []) as Record<string, string | null>;
+    expect(state).toEqual({ fetch: null, pixabay: 'abcdef…mnop', pexels: null });
+  });
+
+  it('saves and clears a key through the World, so the next search reads it', async () => {
+    const { world, secrets, stored } = settingsWorld();
+    const ui = world.webUi!('en');
+    await ui.invoke!('setup', 'setKey', ['pixabay', '  fresh-key-123456  ']);
+    expect(stored).toEqual([[WEB_FETCH_PIXABAY_SECRET, 'fresh-key-123456']]);
+    expect(secrets[WEB_FETCH_PIXABAY_SECRET]).toBe('fresh-key-123456');
+    expect(await ui.invoke!('setup', 'state', [])).toMatchObject({ pixabay: 'fresh-…3456' });
+    await ui.invoke!('setup', 'clearKey', ['pixabay']);
+    expect(secrets[WEB_FETCH_PIXABAY_SECRET]).toBe('');
+    expect(await ui.invoke!('setup', 'state', [])).toMatchObject({ pixabay: null });
+  });
+
+  it('refuses an empty key, an unknown key name, panel or method', async () => {
+    const { world } = settingsWorld();
+    const ui = world.webUi!('en');
+    await expect(ui.invoke!('setup', 'setKey', ['pixabay', '   '])).rejects.toThrow('Paste a key first');
+    await expect(ui.invoke!('setup', 'setKey', ['nope', 'abc'])).rejects.toThrow('Unknown key: nope');
+    await expect(ui.invoke!('other', 'state', [])).rejects.toThrow('Unknown panel: other');
+    await expect(ui.invoke!('setup', 'delete', [])).rejects.toThrow('Unknown method: delete');
+  });
+
+  it('offers the state method by GET and says what a test needs', async () => {
+    const { world } = settingsWorld();
+    const ui = world.webUi!('en');
+    expect(ui.panels?.[0]).toMatchObject({ id: 'setup', getMethods: ['state'] });
+    await expect(ui.invoke!('setup', 'test', [])).rejects.toThrow('Set a Pixabay or Pexels key before testing');
+  });
+
+  it('renders its own settings group', () => {
+    const { world } = settingsWorld();
+    const group = world.webUi!('en').config?.[0];
+    expect(group?.id).toBe('world:web-fetch');
+    expect(Object.keys(group?.schema.properties ?? {})).toEqual([
+      'worlds.web-fetch.baseUrl',
+      'worlds.web-fetch.maxChars',
+      'worlds.web-fetch.imageMaxBytes',
+      'worlds.web-fetch.maxImageResults',
+      'worlds.web-fetch.timeoutMs',
+    ]);
+    expect(group?.schema.properties['worlds.web-fetch.maxChars']).toMatchObject({ type: 'integer', 'x-hot': true });
+  });
+});
+
 describe('the web-fetch World', () => {
   it('mounts both tools and describes them for the WebUI', () => {
-    const world = WEB_FETCH.create({ cfg: { ...WEB_FETCH_DEFAULTS }, secret: () => 'test-key' } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
+    const world = WEB_FETCH.create({ cfg: { ...WEB_FETCH_DEFAULTS }, secret: () => 'test-key', storeSecret: () => {} } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
     expect(world.id).toBe(WEB_FETCH.id);
     expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image', 'web_search_images']);
     expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch', 'web_fetch_image', 'web_search_images']);
