@@ -11,13 +11,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pal-AI-Lab/Coopanion/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Pal-AI-Lab/Coopanion?color=00a870"></a>
-  <a href="https://github.com/Pal-AI-Lab/Coopanion/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Pal-AI-Lab/Coopanion/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Amyias/Coopanion-research-change/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Amyias/Coopanion-research-change?color=00a870"></a>
+  <a href="https://github.com/Amyias/Coopanion-research-change/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Amyias/Coopanion-research-change/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Windows 10 / 11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6feb">
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f6feb">
   <img alt="Linux x64" src="https://img.shields.io/badge/Linux-x64-1f6feb">
   <a href="LICENSE"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-8b8b8f"></a>
 </p>
+
+> **个人修改版**：本仓库是 Coopanion 的个人分支，**不是官方发布**，与 Pal-AI-Lab 无关；来源、许可证与改动清单见 [NOTICE](NOTICE)。
 
 <p align="center">
   <a href="https://coo.palailab.org">官网</a> ｜

@@ -1,0 +1,37 @@
+NOTICE — Coopanion, personal modified version
+===========================================
+
+This repository is a modified copy of Coopanion:
+
+  https://github.com/Pal-AI-Lab/Coopanion
+  Upstream commit 092613e (release v0.2.16), read on 2026-10-29.
+  Copyright (C) Pal-AI-Lab. Licensed under the GNU Affero General Public
+  License, version 3 or later; the full text, with the Steamworks section 7
+  additional permission, is in LICENSE.
+
+It is not an official release of Coopanion. It is not affiliated with,
+endorsed by, or maintained by Pal-AI-Lab.
+
+This copy is maintained by Amyias, who modified it on and after 2026-10-29.
+
+Modifications, as AGPL section 5 requires a modified version to state:
+
+- Web search is mounted by default for new deployments (core/seed.ts,
+  core/companion.ts), and the vendored websearch World stays mounted.
+- A bundled World in core/web-fetch/ adds web_fetch (one page as Markdown),
+  web_fetch_image (one image as an attachment, with a size cap and a refusal of
+  local and private addresses), and web_search_images (picture addresses from
+  Pixabay or Pexels). It has its own settings page.
+- The desktop pet page shows the pictures a say message carries, one at a time
+  with arrows, and enlarges one on a click (packages/cortico-world-desktop-pet).
+- On Windows the update check and download use Node's https instead of
+  electron-updater's network stack (app/node-updater.cjs).
+- Release and update sources point at this repository, not upstream
+  (electron-builder.yml, app/main.cjs, app/updater.cjs,
+  console/features/release.ts).
+- Tests and documentation follow the changes above.
+
+Cortico, vendored under vendor/cortico, is licensed under the MIT License,
+Copyright (c) 2026 Phantivia.
+
+The AGPL text in LICENSE governs this work; this notice does not replace it.

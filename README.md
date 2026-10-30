@@ -11,13 +11,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pal-AI-Lab/Coopanion/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Pal-AI-Lab/Coopanion?color=00a870"></a>
-  <a href="https://github.com/Pal-AI-Lab/Coopanion/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Pal-AI-Lab/Coopanion/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Amyias/Coopanion-research-change/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Amyias/Coopanion-research-change?color=00a870"></a>
+  <a href="https://github.com/Amyias/Coopanion-research-change/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Amyias/Coopanion-research-change/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Windows 10 / 11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6feb">
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f6feb">
   <img alt="Linux x64" src="https://img.shields.io/badge/Linux-x64-1f6feb">
   <a href="LICENSE"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-8b8b8f"></a>
 </p>
+
+> **Personal modified version**: this repository is a personal fork of Coopanion, **not an official release**, and is not affiliated with Pal-AI-Lab; see [NOTICE](NOTICE) for its origin, license and the list of changes.
 
 <p align="center">
   <a href="https://coo.palailab.org">Website</a> ｜
