@@ -1,36 +1,10 @@
-/**
- * The `web-fetch` World: one tool, `web_fetch`, which reads a single page as Markdown through
- * DeepSeek's Fetch API (`POST <base>/v1/tools/fetch`). Cortico's `websearch` World covers search only;
- * this World closes that gap without touching the vendored copy.
- *
- * The key is the one the `websearch` World's DeepSeek provider uses (`DEEPSEEK_SEARCH_API_KEY` in the
- * deployment `.env`), so a deployment that configured search needs nothing else. A page the API cannot
- * read comes back as the API's own reason (403 refused by its policy, 404 no usable content, 402 the
- * account is out of credit), never as a guess.
- */
-import type { ToolDef, World, WorldHost } from 'cortico/core/types.ts';
-import { describeTools, type WorldDefinition, type WorldDescribe, type WorldSection } from 'cortico/world.ts';
+/** The tools of the `web-fetch` World: `web_fetch` reads one page as Markdown through DeepSeek's Fetch API. */
+import type { ToolDef } from 'cortico/core/types.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from './config.ts';
 
-/** The secret the websearch World's DeepSeek provider stores; the Fetch API takes the same key. */
-const SECRET = 'DEEPSEEK_SEARCH_API_KEY';
 /** The API refuses a longer URL, and one with credentials in it. */
 const URL_MAX = 8192;
 const RETRY_DELAYS_MS = [1000, 3000];
-
-export interface WebFetchConfigSection extends WorldSection {
-  /** `<baseUrl>/v1/tools/fetch`; empty means the public API. */
-  baseUrl: string;
-  timeoutMs: number;
-  /** A page longer than this is cut, and the receipt says how much was left out. */
-  maxChars: number;
-}
-
-export const WEB_FETCH_DEFAULTS = {
-  enabled: false,
-  baseUrl: 'https://api.deepseek.com',
-  timeoutMs: 20_000,
-  maxChars: 12_000,
-} as const satisfies WebFetchConfigSection;
 
 export interface WebFetchOptions {
   baseUrl: string;
@@ -134,8 +108,8 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
     handler: async (args) => {
       const url = fetchableUrl(typeof args.url === 'string' ? args.url.trim() : '');
       if (!url) return '[bad input] url must be an absolute http or https URL with a host and no credentials';
-      const key = opts.secret(SECRET).trim();
-      if (!key) return `[tool failed] web fetch is not configured (missing ${SECRET})`;
+      const key = opts.secret(WEB_FETCH_SECRET).trim();
+      if (!key) return `[tool failed] web fetch is not configured (missing ${WEB_FETCH_SECRET})`;
       let page: { title: string; content: string };
       try {
         page = await fetchPage(opts, key, url);
@@ -150,46 +124,3 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
     },
   };
 }
-
-class WebFetchWorld implements World {
-  readonly id = 'web-fetch';
-  private readonly opts: WebFetchOptions;
-
-  constructor(opts: WebFetchOptions) {
-    this.opts = opts;
-  }
-
-  /** No environment section: the tool's description says when to use it. */
-  envPromptVars(): Record<string, string> {
-    return {};
-  }
-
-  tools(): ToolDef[] {
-    return [webFetchTool(this.opts)];
-  }
-
-  async start(_host: WorldHost): Promise<void> {}
-
-  async stop(): Promise<void> {}
-}
-
-const DESCRIBE: WorldDescribe = {
-  tools: describeTools(WEB_FETCH_TOOL_DECLS, {
-    web_fetch: { zh: '把指定网页的正文按 Markdown 读回来。', en: 'Reads one page as Markdown.' },
-  }),
-  events: [],
-};
-
-export const WEB_FETCH: WorldDefinition<WebFetchConfigSection> = {
-  id: 'web-fetch',
-  label: 'WebFetch',
-  defaults: () => ({ ...WEB_FETCH_DEFAULTS }),
-  create: (ctx) =>
-    new WebFetchWorld({
-      baseUrl: ctx.cfg.baseUrl ?? WEB_FETCH_DEFAULTS.baseUrl,
-      timeoutMs: ctx.cfg.timeoutMs ?? WEB_FETCH_DEFAULTS.timeoutMs,
-      maxChars: ctx.cfg.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-      secret: (name) => ctx.secret(name),
-    }),
-  describe: DESCRIBE,
-};

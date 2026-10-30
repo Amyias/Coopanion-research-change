@@ -10,7 +10,7 @@
  * The `coopanion` World (`notice.ts`) tells Coo what the app has to say: the release notes after
  * an update, and the settings the person changes. The `websearch` World is Cortico's: it gives Coo
  * `web_search`, whose results arrive as the tool's output, so answering from them needs no computer use.
- * The `web-fetch` World (`web-fetch.ts`) adds `web_fetch` for reading one page, through the same
+ * The `web-fetch` World (`web-fetch/`) adds `web_fetch` for reading one page, through the same
  * DeepSeek key.
  *
  * The app language (`config.language`, `language.ts`) picks the text people read and the language of
@@ -80,7 +80,7 @@ import type { contextStageConfigGroup } from '../vendor/cortico/bots/cormini/per
 import type { CorminiConfig } from '../vendor/cortico/bots/cormini/index.ts';
 import { crashFields, describeEndpoint, publicExtensionName, Telemetry, type Counter } from './telemetry.ts';
 import { AUTO_UPDATE_DEFAULT, autoUpdateProperties, watchAutoUpdate, type UpdateConfig } from './update-settings.ts';
-import { WEB_FETCH } from './web-fetch.ts';
+import { WEB_FETCH } from './web-fetch/index.ts';
 
 /** The active endpoint's key is set in the process environment or the endpoint's `.env`; a ChatGPT plan's endpoint is signed in. */
 function hasKey(config: CoreConfig): boolean {

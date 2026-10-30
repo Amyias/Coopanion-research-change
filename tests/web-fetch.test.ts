@@ -1,10 +1,13 @@
 /**
- * The web-fetch World's one tool: what it sends, what it returns, and how it reports a refusal from
- * the API. The server is a real local one; only the API's answers are scripted.
+ * The web-fetch World: what its tool sends and returns, how it reports a refusal from the API, and
+ * the contract its definition offers. The server is a real local one; only the API's answers are
+ * scripted.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { WEB_FETCH_DEFAULTS, webFetchTool } from '../core/web-fetch.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_SECRET } from '../core/web-fetch/config.ts';
+import { WEB_FETCH } from '../core/web-fetch/definition.ts';
+import { webFetchTool } from '../core/web-fetch/tools.ts';
 
 const closing: Array<() => void> = [];
 afterEach(() => { for (const close of closing.splice(0)) close(); });
@@ -33,7 +36,7 @@ function tool(baseUrl: string, overrides: { maxChars?: number; secret?: string }
     baseUrl,
     timeoutMs: 5000,
     maxChars: overrides.maxChars ?? WEB_FETCH_DEFAULTS.maxChars,
-    secret: (name) => (name === 'DEEPSEEK_SEARCH_API_KEY' ? (overrides.secret ?? 'test-key') : ''),
+    secret: (name) => (name === WEB_FETCH_SECRET ? (overrides.secret ?? 'test-key') : ''),
   });
 }
 
@@ -78,5 +81,15 @@ describe('web_fetch', () => {
       expect(await tool(baseUrl).handler({ url }, {} as never)).toBe('[bad input] url must be an absolute http or https URL with a host and no credentials');
     }
     expect(calls).toEqual([]);
+  });
+});
+
+describe('the web-fetch World', () => {
+  it('mounts web_fetch and describes it for the WebUI', () => {
+    const world = WEB_FETCH.create({ cfg: { ...WEB_FETCH_DEFAULTS }, secret: () => 'test-key' } as unknown as Parameters<typeof WEB_FETCH.create>[0]);
+    expect(world.id).toBe(WEB_FETCH.id);
+    expect(world.tools().map((tool) => tool.name)).toEqual(['web_fetch']);
+    expect(WEB_FETCH.describe?.tools.map((tool) => tool.name)).toEqual(['web_fetch']);
+    expect(WEB_FETCH.defaults()).toEqual(WEB_FETCH_DEFAULTS);
   });
 });
