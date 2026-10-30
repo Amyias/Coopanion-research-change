@@ -206,8 +206,8 @@ describe('web_search_images', () => {
     const out = await searchTool({ pexelsKey: 'k', pexelsBase: origin }).handler({ query: 'corgi' }, {} as never);
     expect(out).toBe([
       'web images: corgi',
-      '1. a corgi on grass — https://images.example.com/corgi.jpg (by Ann)',
-      '2. a picture — https://images.example.com/two.jpg',
+      '1. a corgi on grass — https://images.example.com/corgi.jpg (by Ann · Pexels)',
+      '2. a picture — https://images.example.com/two.jpg (Pexels)',
     ].join('\n'));
     expect(hits[0]).toContain('query=corgi');
   });
@@ -218,7 +218,7 @@ describe('web_search_images', () => {
       res.end(JSON.stringify({ hits: [{ tags: 'corgi puppy', user: 'Bob', largeImageURL: 'https://cdn.example.com/x.jpg' }] }));
     });
     const out = await searchTool({ pixabayKey: 'k', pixabayBase: origin }).handler({ query: 'corgi' }, {} as never);
-    expect(out).toBe('web images: corgi\n1. corgi puppy — https://cdn.example.com/x.jpg (by Bob)');
+    expect(out).toBe('web images: corgi\n1. corgi puppy — https://cdn.example.com/x.jpg (by Bob · Pixabay)');
     expect(hits[0]).toContain('key=k');
   });
 

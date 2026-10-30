@@ -226,7 +226,10 @@ export function searchImagesTool(opts: WebFetchOptions): ToolDef {
         }
         return `[fetch failed] ${error instanceof Error ? error.message : String(error)}`;
       }
-      return [`web images: ${query}`, ...hits.map((hit, index) => `${index + 1}. ${hit.title} — ${hit.url}${hit.credit ? ` (by ${hit.credit})` : ''}`)].join('\n');
+      return [
+        `web images: ${query}`,
+        ...hits.map((hit, index) => `${index + 1}. ${hit.title} — ${hit.url}${hit.credit ? ` (by ${hit.credit} · ${hit.provider})` : ` (${hit.provider})`}`),
+      ].join('\n');
     },
   };
 }
