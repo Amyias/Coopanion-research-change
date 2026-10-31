@@ -79,7 +79,7 @@ Cortico 是内核,Coopanion 是用它做的一个产品。使用者看到的界�
 - 每次改动**用户可见的能力**时,在根目录 `NOTICE` 的"Modifications"里补一条(AGPL §5 要求修改版带显著说明);
 - 两个 README 顶部的"个人修改版/非官方"声明与指向本仓库的徽章保持;发布说明里照常写清这次改了什么。
 
-`package.json` 的 `author`、`homepage`、`repository` 指本仓库,让构建出的安装包不会看起来像官方版本。
+`package.json` 的 `author`、`homepage`、`repository` 指本仓库,让构建出的安装包不会看起来像官方版本;打包时 `scripts/pack.ts` 把 `LICENSE` 与 `NOTICE` 一并放进应用目录,分发出去的二进制自带许可证与修改说明。
 
 ## 发布
 
