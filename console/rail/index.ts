@@ -14,6 +14,7 @@ import { get, post, setConfig } from '../base/api.ts';
 import type { WebUiLamp } from 'cortico/web/shared/webui-protocol.ts';
 import { buildHash, type Route, type Router } from '../base/router.ts';
 import { icon, type ConsoleIconName } from '../base/ui/icons.ts';
+import { notice } from '../base/ui/index.ts';
 import { lampRow, paintLamps } from '../base/ui/lamp.ts';
 import type { ConsoleMode } from '../features/mode.ts';
 import { onNameSaved } from '../features/bot-name.ts';
@@ -105,7 +106,6 @@ export function createRail(deps: RailDeps): Rail {
     const item = ui.h('a', 'navitem');
     item.href = buildHash(it.segments);
     item.setAttribute('aria-label', it.label);
-    item.title = it.label;
     item.dataset.basic = String(it.basic);
     // a World instance has no icon of its own: the folded rail shows a generic one
     item.append(icon(doc, it.icon ?? 'boxes', it.icon ? 'navicon' : 'navicon companion-module-icon'));
@@ -257,7 +257,7 @@ export function createRail(deps: RailDeps): Rail {
   modeButton.addEventListener('animationend', () => modeButton.classList.remove('companion-pressed'), { signal });
   const renderMode = (animate: boolean): void => {
     const advanced = mode === 'advanced';
-    modeButton.title = advanced ? L.toNormalHint : L.toAdvancedHint;
+    modeButton.setAttribute('aria-description', advanced ? L.toNormalHint : L.toAdvancedHint);
     modeButton.setAttribute('aria-label', advanced ? L.toNormal : L.toAdvanced);
     modeButton.replaceChildren(icon(doc, advanced ? 'eye-off' : 'settings', 'navicon'), ui.h('span', 'lbl', advanced ? L.toNormal : L.toAdvanced));
     doc.body.classList.toggle('companion-normal', !advanced);
@@ -270,7 +270,7 @@ export function createRail(deps: RailDeps): Rail {
   const avatar = createAvatarControl({ doc, ui, signal, onError });
   const name = ui.h('button', 'rail-name');
   name.type = 'button';
-  name.title = S.renameTitle;
+  name.setAttribute('aria-description', S.renameTitle);
   const nameText = ui.h('span', 'rail-name-text', DEFAULT_NAME);
   const nameEdit = ui.h('span', 'rail-name-edit');
   nameEdit.setAttribute('aria-hidden', 'true');
@@ -302,7 +302,6 @@ export function createRail(deps: RailDeps): Rail {
     run.disabled = !available || runPending;
     run.replaceChildren(icon(doc, paused ? 'play' : 'pause'));
     run.setAttribute('aria-label', paused ? S.runResume : S.runPause);
-    run.title = paused ? S.runResume : S.runPause;
     run.classList.toggle('paused', paused);
     runState.textContent = paused ? L.paused : L.running;
     runState.classList.toggle('paused', paused);
@@ -334,7 +333,7 @@ export function createRail(deps: RailDeps): Rail {
     shutdown.hidden = !can;
     shutdown.disabled = !can || shuttingDown;
     shutdown.setAttribute('aria-label', S.shutdownAria);
-    shutdown.title = shuttingDown ? S.finishing : S.shutdownTitle;
+    shutdown.setAttribute('aria-description', shuttingDown ? S.finishing : S.shutdownTitle);
   };
   shutdown.addEventListener('click', () => void (async () => {
     if (shuttingDown || capabilities.shutdown !== true) return;
@@ -354,7 +353,7 @@ export function createRail(deps: RailDeps): Rail {
       const localComplete = out?.localComplete ?? steps.every((step) => step.ok);
       const externalUnverified = (out?.externalChecks ?? []).some((check) => check.status !== 'verified-ended');
       const lines = steps.map((s) => `${s.ok ? '✓' : '✗'} ${s.label} · ${(s.elapsedMs / 1000).toFixed(1)}s${s.ok ? '' : ` — ${s.detail ?? S.stepIncomplete}`}`);
-      void ui.confirm({
+      void notice(ui, {
         title: !localComplete ? S.resultLocalIncomplete
           : externalUnverified ? S.resultExternalUnverified
           : out?.ok === false ? S.resultUnverified : S.doneShutdown,
@@ -502,7 +501,7 @@ export function createRail(deps: RailDeps): Rail {
   const showTip = (event: Event): void => {
     const target = (event.target as Element).closest<HTMLElement>('a.navitem, .companion-mode, .rail-action, .rail-avatar');
     if (!collapsed || !target || target.hidden) return;
-    const label = target.getAttribute('aria-label') || target.title;
+    const label = target.getAttribute('aria-label');
     if (!label) return;
     tooltip.textContent = label;
     tooltip.hidden = false;

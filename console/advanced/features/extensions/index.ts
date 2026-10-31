@@ -2,7 +2,9 @@
 
 import { get, post, pickPath } from '../../../base/api.ts';
 import { icon, brandMark, cooFigure, COO_FACE_NAMES } from '../../../base/ui/icons.ts';
+import { notice } from '../../../base/ui/index.ts';
 import { renderMarkdown } from './markdown.ts';
+import { gallery, takeImages } from './gallery.ts';
 import type { FeatureContext } from '../feature.ts';
 import { S } from './strings.ts';
 import { CATALOG_CATEGORY_IDS, inCatalogCategory, isFunctionTag, type CatalogCategory } from './catalog.ts';
@@ -801,7 +803,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
   function cardTag(id: string) {
     if (isExclusion(id)) {
       const chip = tagChip(id, { onToggle: () => toggleExclude(id) });
-      chip.classList.add('is-exclusion'); chip.setAttribute('aria-label', S.excludeTag(tagLabel(id) ?? id)); chip.append(icon(doc, 'eye', 'icon extension-tag-eye'));
+      chip.classList.add('is-exclusion'); chip.setAttribute('aria-label', S.excludeTag(tagLabel(id) ?? id));
       return chip;
     }
     const state = states[kind];
@@ -1039,7 +1041,8 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     const body = ui.h('div', 'extension-comment-body'); body.append(renderMarkdown(doc, text));
     for (const pre of body.querySelectorAll('pre')) {
       const block = ui.h('div', 'extension-codeblock'); pre.replaceWith(block);
-      block.append(pre, copyIcon(pre.textContent ?? ''));
+      // An empty code block has nothing to copy.
+      block.append(pre, ...(pre.textContent?.trim() ? [copyIcon(pre.textContent)] : []));
     }
     return body;
   }
@@ -1175,7 +1178,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
       for (const cls of ['track', 'arc']) { const circle = doc.createElementNS(svg, 'circle'); for (const [key, value] of Object.entries({ cx: '16', cy: '16', r: '13', class: cls })) circle.setAttribute(key, value); ring.append(circle); }
       button.append(ring); button.disabled = true; return button;
     }
-    button.append(icon(doc, update ? 'arrow-up' : 'download'));
+    button.append(icon(doc, update ? 'update' : 'download'));
     if (update) {
       button.disabled = !!update.problems.length; attachHint(button, label, update.problems.join('\n') || undefined);
       button.addEventListener('click', event => { event.stopPropagation(); void operate('install', { name: hit.name, version: update.latestVersion }, 'market', owner, anchor); }, { signal });
@@ -1216,15 +1219,58 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
   /** The market's cards by package, for animating a re-render (see measureReflow): cards that go leave
    * sideways first, then the rest close up. */
   const measureCards = () => marketGrid?.isConnected ? measureReflow(marketGrid, ':scope > .extension-market-card', card => card.dataset.name) : undefined;
-  function renderMarket(keepHeight = false) {
+  /**
+   * Where the market was for each filter combination seen in this window (category, tags, exclusions, search,
+   * sort, installation, advanced search): the card at the top of the list, by name and by its index in the
+   * results, and how far it sat below the list's top. Coming back to a combination (a tag clicked by mistake,
+   * then dropped; a search cleared) opens its page with that card where it was; a new one starts at the top.
+   * Kept in memory only, for the latest PLACE_LIMIT combinations.
+   */
+  const PLACE_LIMIT = 20;
+  const places = new Map<string, { index: number; name: string; offset: number }>();
+  let shown: { key: string; page: number; size: number } | undefined;
+  const placeKey = (state: CategoryState) => JSON.stringify([kind, state.catalogCategory, state.installation, state.filter.trim(), state.sort, [...state.tags].sort(),
+    state.officialOnly, state.certifiedOnly, state.newOnly, state.author.trim(), state.keyword.trim(), state.license.trim(), state.sinceDays, state.minDownloads, [...exclusions].sort()]);
+  /** Notes where the list shows now, under the combination it shows. */
+  function rememberPlace() {
+    if (!shown) return;
+    const box = scrollRoot.getBoundingClientRect();
+    // Cards under the pinned 已选 / 已排除 lines are out of sight.
+    const top = box.top + (activeBar && !activeBar.hidden ? activeBar.offsetHeight : 0);
+    const cards = [...marketGrid.querySelectorAll<HTMLElement>(':scope > .extension-market-card[data-name]')];
+    // A grid just rebuilt (see render) has no cards yet: the place noted before it stands.
+    if (!cards.length) return;
+    const at = cards.findIndex(card => card.getBoundingClientRect().bottom > top);
+    places.delete(shown.key);
+    places.set(shown.key, at < 0 ? { index: shown.page * shown.size, name: '', offset: 0 }
+      : { index: shown.page * shown.size + at, name: cards[at].dataset.name!, offset: cards[at].getBoundingClientRect().top - box.top });
+    while (places.size > PLACE_LIMIT) places.delete(places.keys().next().value!);
+  }
+  /** Puts the remembered card back at its height, or the list at its top when there is none or it has gone. */
+  function placeAt(place: { name: string; offset: number } | undefined) {
+    const card = place?.name ? [...marketGrid.querySelectorAll<HTMLElement>(':scope > .extension-market-card')].find(el => el.dataset.name === place.name) : undefined;
+    if (!card) { scrollRoot.scrollTop = 0; return; }
+    scrollRoot.scrollTop += card.getBoundingClientRect().top - scrollRoot.getBoundingClientRect().top - place!.offset;
+  }
+  /** Cards' heights by package, kept across renders, so a page coming back lays out as it was before its cards draw. */
+  const knownHeights = new Map<string, number>();
+  /**
+   * `toTop`: the list goes back to its top before the motion plays, so every card then in view moves alike.
+   * Returns whether the list moved to a combination's place (see places), which a caller keeping its scroll leaves.
+   */
+  function renderMarket(toTop = false): boolean {
     const reflow = measureCards();
-    if (!keepHeight) marketGrid.style.minHeight = '';
     const state = states[kind];
     paintCategories?.();
     const listed = (pool: SearchHitView[]) => pool.filter(hit => inCatalogCategory(hit.tags, state.catalogCategory)).map(h => ({ ...named(h), installed: installed.some(p => p.name === h.name && p.state !== 'removed') })).filter(h => state.installation !== 'installed' || h.installed);
     const hits = listed(catalogHits(state)), unexcluded = listed(catalogHits(state, true));
     // 注意事项 only exclude, so a selection carried over from before holds none of them.
     state.tags = state.tags.filter(id => marketIndex.tags[id] && !isExclusion(id) && !exclusions.includes(id));
+    // A changed combination: note where the last one was, and come back to this one's place if it has one.
+    const key = placeKey(state), leaving = !!shown && shown.key !== key;
+    if (leaving) rememberPlace();
+    const back = leaving ? places.get(key) : undefined;
+    if (back) state.page = Math.floor(back.index / pageSize());
     const terms = searchTerms(state.filter);
     const arrange: ArrangeOptions = { filter: state.filter, tagLabel, sort: state.sort, hideInstalled: state.installation === 'available', page: state.page, pageSize: pageSize(), tags: state.tags, officialOnly: state.officialOnly, certifiedOnly: state.certifiedOnly, newOnly: state.newOnly, ...advancedFilters(state) };
     const result = arrangeHits(hits, arrange); if (state.fetched) state.page = result.page;
@@ -1239,7 +1285,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     // Cards skip rendering until scrolled to, sized by a placeholder meanwhile. A re-render builds new
     // cards, so each takes over the height its predecessor had: the list keeps its layout, above the
     // window too, instead of every card falling back to the placeholder's height.
-    const heights = new Map([...marketGrid.querySelectorAll<HTMLElement>(':scope > .extension-market-card[data-name]')].map(card => [card.dataset.name!, contentHeight(card)]));
+    for (const card of marketGrid.querySelectorAll<HTMLElement>(':scope > .extension-market-card[data-name]')) knownHeights.set(card.dataset.name!, contentHeight(card));
     marketGrid.replaceChildren(...result.shown.map(hit => {
       const card = ui.h('article', 'extension-card extension-market-card' + (hit.installed ? ' is-installed' : ''));
       const owner = kind; card.tabIndex = 0; card.setAttribute('role', 'button'); card.setAttribute('aria-label', hit.displayName ?? hit.name);
@@ -1292,7 +1338,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
       if (hit.date) foot.append(dateStat(hit.date));
       card.append(foot);
       card.dataset.name = hit.name; card.append(getButton(hit, owner));
-      const known = heights.get(hit.name); if (known) card.style.containIntrinsicHeight = `auto ${known}px`;
+      const known = knownHeights.get(hit.name); if (known) card.style.containIntrinsicHeight = `auto ${known}px`;
       return card;
     }));
     if (focusName) {
@@ -1304,8 +1350,12 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     renderInView();
     for (const [control, paint] of detailControls) if (control.isConnected) paint(); else detailControls.delete(control);
     if (!result.matched) marketGrid.append(emptyMarket(state));
-    pager(marketPager, result.matched, result.page, pageSize(), page => { marketGrid.style.minHeight = `${marketGrid.getBoundingClientRect().height}px`; state.page = page; renderMarket(true); save(); });
+    // Another page starts at the top of the list at once, however many cards it has.
+    pager(marketPager, result.matched, result.page, pageSize(), page => { state.page = page; renderMarket(true); save(); });
+    shown = { key, page: result.page, size: pageSize() };
+    if (leaving) placeAt(back); else if (toTop) scrollRoot.scrollTop = 0;
     reflow?.play();
+    return leaving;
   }
   /**
    * The sidebar below the categories. 推荐 picks one of certified and official, with 新品 beside them on its own; 系列
@@ -1566,7 +1616,9 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
         main.append(tabs.el, ...pages.map(page => page.el)); show(tab);
       } else main.append(info);
       const intro = ui.h('div', 'extension-intro');
-      intro.append(renderMarkdown(doc, item?.builtin ? [item.description, S.builtinNote].filter(Boolean).join(' ') : data.description ?? '—'));
+      // Pictures in the description go to the gallery below; the text keeps the rest.
+      const blurb = takeImages(item?.builtin ? [item.description, S.builtinNote].filter(Boolean).join(' ') : data.description ?? '—');
+      intro.append(renderMarkdown(doc, blurb.text || '—'));
       info.append(ui.h('h4', '', S.introduction), intro);
       // 内建条目要有对应的 npm 包才在索引里
       const indexed = (!item?.builtin || !!listed) && Object.keys(marketIndex.tags).length > 0;
@@ -1576,11 +1628,9 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
         if (indexed) { const report = ui.h('a', 'extension-tag-feedback', S.feedbackTags); report.href = tagIssueUrl(listed?.name ?? data.name); report.target = '_blank'; report.rel = 'noopener noreferrer'; row.append(report); }
         info.append(row);
       }
-      if (listed?.screenshots?.length) {
-        const shots = ui.h('div', 'extension-screenshots');
-        for (const src of listed.screenshots) { const image = ui.h('img'); image.src = src; image.alt = ''; image.loading = 'lazy'; shots.append(image); }
-        info.append(shots);
-      }
+      // After the description, its pictures: the listing's screenshots, then those from the text. Only shown when there are any.
+      const images = [...(listed?.screenshots ?? []).map(src => ({ src, alt: '' })), ...blurb.images];
+      if (images.length) info.append(gallery(doc, images, signal));
       info.append(ui.h('h4', '', S.information));
       if (item?.reason) info.append(ui.msgline(item.reason, true));
       if (item?.webUi === 'missing') info.append(ui.msgline(S.noteWebUiMissing, true));
@@ -1679,7 +1729,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
       if (report?.error) { win.sessionStorage.removeItem(storageKey + ':restart'); throw new Error(report.error); }
       const incomplete = (report?.steps ?? []).filter(step => !step.ok);
       if (report && incomplete.length) {
-        void ui.confirm({
+        void notice(ui, {
           title: supervised ? S.doneRestartSupervised : S.doneRestart,
           body: [report.result ?? S.resultDefault, '', ...incomplete.map(step => `✗ ${step.label} · ${step.detail ?? S.stepIncomplete}`)].join('\n'),
         });
@@ -1708,6 +1758,8 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
   function render() {
     const state = states[kind];
     const keptScroll = scrollRoot.scrollTop;
+    // The cards are about to go: where they were is noted for their combination first.
+    if (marketGrid?.isConnected) rememberPlace();
     // The panel is rebuilt with a new grid; its cards still move from where the old ones were.
     const reflow = measureCards();
     manualOpen = panel.querySelector<HTMLDetailsElement>('.world-manual')?.open ?? manualOpen;
@@ -1833,8 +1885,8 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
       panel.append(filters, advanced, registryPanel, messageNodes.market, body);
     }
     for (const [area, value] of Object.entries(state.messages)) if (messageNodes[area]) { messageNodes[area].textContent = value.text; messageNodes[area].className = 'msgline' + (value.bad ? ' bad' : ''); }
-    renderRestart(); renderMarket();
-    scrollRoot.scrollTop = keptScroll;
+    renderRestart();
+    if (!renderMarket()) scrollRoot.scrollTop = keptScroll;
     reflow?.play(marketGrid);
   }
   // 只看宽度变化

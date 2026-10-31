@@ -70,7 +70,9 @@ function stub(over = {}) {
     let body = {};
     if (u === '/api/worlds') body = { worlds: over.worlds ?? [{ id: 'alpha', label: '甲扩展', status: 'active', visible: true }, { id: 'builtin', label: 'Builtin', status: 'inactive' }] };
     else if (u === '/api/worlds/visibility') body = { driftedWorlds: over.driftedWorlds ?? [] };
-    else if (u === '/api/providers') body = { scope: 'test-provider-tabs', active: '', providers: [] };
+    else if (u === '/api/providers') body = { scope: 'test-provider-tabs', active: over.active ?? '', providers: over.providers ?? [] };
+    else if (u.startsWith('/api/providers/') && u.endsWith('/delete')) { over.onDelete?.(u); body = { ok: true }; }
+    else if (u.startsWith('/api/providers/')) { const name = decodeURIComponent(u.slice('/api/providers/'.length)); body = { name, revision: 'r1', references: over.references?.[name] ?? [], entry: { kind: 'openai', baseUrl: 'https://example.invalid', spec: { model: 'm' } }, secret: null }; }
     else if (u === '/api/provider-modules') body = [];
     else if (u === '/api/extensions') { status = over.listStatus ?? 200; body = status === 200 ? over.list ?? LIST : { error: 'Unavailable' }; }
     else if (u === '/api/extensions/updates') {
@@ -210,18 +212,34 @@ describe('package authors', () => {
   });
 });
 describe('installation feedback', () => {
-  it('releases pagination height when a search reduces the catalog', async () => {
+  it('starts another page at the top of the list, holding no height from the last', async () => {
     stub();
     const { root } = mount(); await flush();
     const size = root.querySelector('.extension-size select');
     size.value = '10'; size.dispatchEvent(new Event('change', { bubbles: true }));
     const grid = marketCards(root);
-    grid.getBoundingClientRect = () => ({ height: 1800 });
+    const scroller = root.querySelector('.world-catalog-scroll');
+    scroller.scrollTop = 900;
     button(root.querySelector('.extension-pager'), extensionStrings.nextPage).click();
-    expect(grid.style.minHeight).toBe('1800px');
-    filterMarket(root, 'found');
-    expect(grid.children).toHaveLength(1);
+    expect(scroller.scrollTop).toBe(0);
     expect(grid.style.minHeight).toBe('');
+  });
+  it('comes back to the page it was on when a filter is dropped again, and starts a new one on its first page', async () => {
+    stub();
+    const { root } = mount(); await flush();
+    const size = root.querySelector('.extension-size select');
+    size.value = '10'; size.dispatchEvent(new Event('change', { bubbles: true }));
+    const first = () => marketCards(root).querySelector('.extension-market-card')?.dataset.name;
+    const firstPage = first();
+    button(root.querySelector('.extension-pager'), extensionStrings.nextPage).click();
+    const secondPage = first();
+    expect(secondPage).not.toBe(firstPage);
+    // A new combination starts on its first page.
+    filterMarket(root, 'mod');
+    expect(first()).not.toBe(secondPage);
+    // Dropping it again comes back to page 2.
+    filterMarket(root, '');
+    expect(first()).toBe(secondPage);
   });
   async function detail(root) {
     filterMarket(root, 'found');
@@ -684,6 +702,54 @@ describe('extension card and history controls', () => {
   });
 });
 
+describe('provider connection cards', () => {
+  const connection = (name) => ({ name, moduleTitle: 'OpenAI', module: 'openai', model: 'm', revision: 'r1', readiness: { state: 'ready' }, usage: [] });
+  async function openConnections(over) {
+    stub({ providers: ['a', 'b', 'c'].map(connection), ...over });
+    window.history.replaceState(null, '', '#/providers');
+    const page = mkCtx({ extensions: true });
+    lives.push(page.lifecycle);
+    mountProviders(page.ctx);
+    await flush(60);
+    return page;
+  }
+  const order = (root) => [...root.querySelectorAll('.connection-cards > .connection-card')].map(card => card.dataset.provider);
+  it('asks before deleting a connection, and refuses one a Bot uses', async () => {
+    const deleted = [];
+    const { root } = await openConnections({ references: { b: ['Coo'] }, onDelete: url => deleted.push(url) });
+    const trash = (name) => root.querySelector(`.connection-card[data-provider="${name}"] .connection-erase`);
+    trash('b').click(); await flush();
+    // Only told: one button, nothing to choose.
+    expect(document.querySelector('.modal').textContent).toContain('Coo');
+    const only = [...document.querySelectorAll('.modal .confirm-card button')];
+    expect(only).toHaveLength(1);
+    only[0].click(); await flush();
+    expect(deleted).toEqual([]);
+    trash('a').click(); await flush();
+    answer(false); await flush();
+    expect(deleted).toEqual([]);
+    trash('a').click(); await flush();
+    answer(true); await flush(60);
+    expect(deleted).toEqual(['/api/providers/a/delete']);
+  });
+  it('reorders the cards by dragging and keeps the order for the next visit', async () => {
+    window.localStorage.clear();
+    const { root } = await openConnections();
+    expect(order(root)).toEqual(['a', 'b', 'c']);
+    const pointer = (type, target, y) => { const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: y }); Object.defineProperty(event, 'pointerId', { value: 3 }); target.dispatchEvent(event); };
+    const first = root.querySelector('.connection-card[data-provider="a"] .connection-name');
+    pointer('pointerdown', first, 5); pointer('pointermove', window, 300);
+    expect(root.querySelector('.connection-drag-copy')).not.toBeNull();
+    pointer('pointerup', window, 300); await flush();
+    // jsdom lays nothing out, so the drop lands after the last card.
+    expect(order(root)).toEqual(['b', 'c', 'a']);
+    expect(root.querySelector('.connection-drag-copy')).toBeNull();
+    lives.splice(0).forEach(life => life.dispose()); document.body.replaceChildren();
+    const again = await openConnections();
+    expect(order(again.root)).toEqual(['b', 'c', 'a']);
+  });
+});
+
 describe('provider page tabs', () => {
   async function openProviders(caps = { extensions: true }) {
     window.history.replaceState(null, '', '#/providers');
@@ -898,17 +964,24 @@ describe('World library and catalog', () => {
     expect(calls.some(call => call.url === '/api/worlds/activation')).toBe(false);
     answer(false); await flush();
     expect(calls.some(call => call.url === '/api/worlds/activation')).toBe(false);
-    root.querySelector('[aria-label="对 agent 隐藏"]').click(); await flush();
+    root.querySelector('[aria-label="对 Coo 隐藏"]').click(); await flush();
+    // Hiding asks first; cancelling leaves the World as it was.
+    expect(document.querySelector('.modal').textContent).toContain('对 Coo 隐藏');
+    expect(calls.some(call => call.url === '/api/worlds/visibility')).toBe(false);
+    answer(false); await flush();
+    expect(calls.some(call => call.url === '/api/worlds/visibility')).toBe(false);
+    root.querySelector('[aria-label="对 Coo 隐藏"]').click(); await flush();
+    answer(true); await flush();
     expect(calls.find(call => call.url === '/api/worlds/visibility').body).toEqual({ id: 'alpha', visible: false });
     expect(root.querySelector('.world-feedback').textContent).toBe('');
   });
-  it('keeps prefix reload confirmation without a page toolbar or success banner', async () => {
+  it('applies a confirmed visibility change to the current conversation without asking again', async () => {
     const { root } = await openWorlds({ driftedWorlds: ['alpha'] }, { worlds: true, worldVisibility: true });
-    root.querySelector('[aria-label="对 agent 隐藏"]').click(); await flush(100);
-    expect(document.querySelector('.modal').textContent).toContain('现在重载');
+    root.querySelector('[aria-label="对 Coo 隐藏"]').click(); await flush(100);
     expect(calls.some(call => call.url === '/api/session/reload-prefix')).toBe(false);
     answer(true); await flush(100);
     expect(calls.some(call => call.url === '/api/session/reload-prefix')).toBe(true);
+    expect(document.querySelector('.modal')).toBeNull();
     expect(root.querySelector('.world-feedback').textContent).toBe('');
     expect(root.querySelector('.world-management-toolbar')).toBeNull();
   });
@@ -952,24 +1025,30 @@ describe('World library and catalog', () => {
       expect(animations.some(a => a.element.classList.contains('world-library-entry') && a.frames[0].transform === 'translateY(90px)')).toBe(true);
     } finally { if (original) Element.prototype.animate = original; else delete Element.prototype.animate; }
   });
-  it('keeps the catalog open when an interrupted closing animation completes', async () => {
+  it('hides the market at once when leaving it, and slides it in when entering', async () => {
     const original = Element.prototype.animate;
     const animations = [];
-    Element.prototype.animate = function() {
+    Element.prototype.animate = function(frames) {
       let finish;
-      const animation = { cancel() {}, finished: new Promise(resolve => { finish = resolve; }) };
-      if (this.classList.contains('world-market')) animations.push({ animation, finish });
+      const animation = { cancel() {}, playState: 'running', finished: new Promise(resolve => { finish = resolve; }) };
+      if (this.classList.contains('world-market')) animations.push({ frames, animation, finish });
       return animation;
     };
     try {
       const { root, ctx } = await openWorlds();
+      const market = root.querySelector('.world-market');
+      // Leaving: gone at once, with nothing animating it out to show through the rows.
       ctx.router.navigate(['world']); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
-      expect(root.querySelector('.world-market').hidden).toBe(false);
+      expect(market.hidden).toBe(true);
+      expect(animations).toHaveLength(0);
+      // Entering: shown and slid in; finishing late changes nothing.
       ctx.router.navigate(['world'], { view: 'market' }); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
+      expect(market.hidden).toBe(false);
+      expect(animations).toHaveLength(1);
+      expect(animations[0].frames.at(-1)).toEqual({ clipPath: 'inset(0 0 0 0%)' });
       animations[0].finish(); await flush();
-      expect(root.querySelector('.world-market').hidden).toBe(false);
-      animations.at(-1).finish(); await flush();
-      expect(root.querySelector('.world-market').inert).toBe(false);
+      expect(market.hidden).toBe(false);
+      expect(market.inert).toBe(false);
     } finally { if (original) Element.prototype.animate = original; else delete Element.prototype.animate; }
   });
   it('filters the catalog by installation state and resets it with clear filters', async () => {
@@ -1034,7 +1113,7 @@ describe('World library and catalog', () => {
     const { root, ctx } = await openWorlds({}, { worlds: true, extensions: true, worldActivation: true, worldVisibility: true, restart: true, supervised: true });
     ctx.router.navigate(['world']); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
     const row = [...root.querySelectorAll('.world-blade')].find(item => item.dataset.key === 'alpha-mod');
-    expect([...row.querySelectorAll('.world-blade-actions button')].map(item => item.getAttribute('aria-label'))).toEqual(['左栏隐藏', '删除扩展', '对 agent 隐藏', '停用 World']);
+    expect([...row.querySelectorAll('.world-blade-actions button')].map(item => item.getAttribute('aria-label'))).toEqual(['左栏隐藏', '删除扩展', '对 Coo 隐藏', '停用 World']);
     expect(row.querySelector('.world-blade-identity h3 [aria-label="扩展信息"]')).not.toBeNull();
     // Rows with fewer controls pack them to the right, with no gap at the end.
     const slots = (item) => [...item.querySelectorAll('.world-blade-actions button')].map(button => button.style.getPropertyValue('--slot'));
@@ -1051,13 +1130,13 @@ describe('World library and catalog', () => {
     const search = root.querySelector('.world-library-tools input[type=search]');
     search.value = '甲'; search.dispatchEvent(new Event('input', { bubbles: true }));
     expect(visible()).toEqual(['alpha-mod']);
-    expect(root.querySelector('.world-library-entry').draggable).toBe(false);
+    expect(root.querySelector('.world-library-entry').classList.contains('is-movable')).toBe(false);
     expect(root.querySelector('.world-no-matches').hidden).toBe(true);
     search.value = '不存在的名字'; search.dispatchEvent(new Event('input', { bubbles: true }));
     expect(visible()).toEqual([]);
     expect(root.querySelector('.world-no-matches').hidden).toBe(false);
     search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(root.querySelector('.world-ready-list .world-library-entry').draggable).toBe(true);
+    expect(root.querySelector('.world-ready-list .world-library-entry').classList.contains('is-movable')).toBe(true);
     button(root.querySelector('.world-library-tools'), '新建分组').click(); await flush();
     const rename = root.querySelector('.world-group-rename');
     rename.value = '聊天'; rename.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
@@ -1065,6 +1144,45 @@ describe('World library and catalog', () => {
     const saved = JSON.parse(window.localStorage.getItem('coopanion.world-groups.v1'));
     expect(Object.values(saved.groups)).toEqual([expect.objectContaining({ name: '聊天', collapsed: true, items: [] })]);
     expect(saved.top[0]).toMatch(/^group:/);
+  });
+  it('ends a drag the window or the page walks away from, so the pointer shows again', async () => {
+    const { root, ctx, lifecycle } = await openWorlds();
+    ctx.router.navigate(['world']); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
+    const pointer = (type, target, y) => { const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: y }); Object.defineProperty(event, 'pointerId', { value: 1 }); target.dispatchEvent(event); };
+    const lift = () => { pointer('pointerdown', root.querySelector('.world-ready-list .world-library-entry .world-blade'), 10); pointer('pointermove', window, 400); };
+    const hidden = () => document.documentElement.classList.contains('is-list-dragging');
+    lift(); expect(hidden()).toBe(true);
+    window.dispatchEvent(new Event('blur'));
+    expect(hidden()).toBe(false);
+    expect(root.querySelector('.world-drag-copy')).toBeNull();
+    lift(); expect(hidden()).toBe(true);
+    lives.splice(lives.indexOf(lifecycle), 1); lifecycle.dispose();
+    expect(hidden()).toBe(false);
+  });
+  it('drags a row with the pointer: a lifted copy, no cursor, and the click after the drop opens nothing', async () => {
+    const { root, ctx } = await openWorlds();
+    ctx.router.navigate(['world']); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
+    const order = () => [...root.querySelectorAll('.world-ready-list .world-library-entry')].map(entry => entry.dataset.key);
+    const [first, ...rest] = order();
+    expect(rest.length).toBeGreaterThan(0);
+    const pointer = (type, target, y) => { const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: y }); Object.defineProperty(event, 'pointerId', { value: 1 }); target.dispatchEvent(event); };
+    const row = root.querySelector(`.world-ready-list .world-library-entry[data-key="${first}"] .world-blade-state, .world-ready-list .world-library-entry[data-key="${first}"] .world-blade`);
+    const hash = window.location.hash;
+    pointer('pointerdown', row, 10);
+    pointer('pointermove', window, 12);
+    expect(root.querySelector('.world-drag-copy')).toBeNull();
+    pointer('pointermove', window, 400);
+    expect(root.querySelector('.world-drag-copy')).not.toBeNull();
+    expect(document.documentElement.classList.contains('is-list-dragging')).toBe(true);
+    expect(root.querySelector(`.world-library-entry[data-key="${first}"]`).classList.contains('is-dragging')).toBe(true);
+    pointer('pointerup', window, 400);
+    // The drop re-renders the rows; the click lands on the live one.
+    root.querySelector(`.world-ready-list .world-library-entry[data-key="${first}"] .world-blade`).click(); window.dispatchEvent(new HashChangeEvent('hashchange')); await flush();
+    expect(window.location.hash).toBe(hash);
+    expect(root.querySelector('.world-drag-copy')).toBeNull();
+    expect(document.documentElement.classList.contains('is-list-dragging')).toBe(false);
+    // jsdom lays nothing out, so the drop lands after the last row.
+    expect(order()).toEqual([...rest, first]);
   });
   it('keeps a built-in World on and visible: its hide and power controls are greyed', async () => {
     const worlds = [{ id: 'core', label: 'Core', status: 'active', visible: true }];
