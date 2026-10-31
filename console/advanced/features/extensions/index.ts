@@ -2,6 +2,7 @@
 
 import { get, post, pickPath } from '../../../base/api.ts';
 import { icon, brandMark, cooFigure, COO_FACE_NAMES } from '../../../base/ui/icons.ts';
+import { notice } from '../../../base/ui/index.ts';
 import { renderMarkdown } from './markdown.ts';
 import { gallery, takeImages } from './gallery.ts';
 import type { FeatureContext } from '../feature.ts';
@@ -1040,7 +1041,8 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     const body = ui.h('div', 'extension-comment-body'); body.append(renderMarkdown(doc, text));
     for (const pre of body.querySelectorAll('pre')) {
       const block = ui.h('div', 'extension-codeblock'); pre.replaceWith(block);
-      block.append(pre, copyIcon(pre.textContent ?? ''));
+      // An empty code block has nothing to copy.
+      block.append(pre, ...(pre.textContent?.trim() ? [copyIcon(pre.textContent)] : []));
     }
     return body;
   }
@@ -1682,7 +1684,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
       if (report?.error) { win.sessionStorage.removeItem(storageKey + ':restart'); throw new Error(report.error); }
       const incomplete = (report?.steps ?? []).filter(step => !step.ok);
       if (report && incomplete.length) {
-        void ui.confirm({
+        void notice(ui, {
           title: supervised ? S.doneRestartSupervised : S.doneRestart,
           body: [report.result ?? S.resultDefault, '', ...incomplete.map(step => `✗ ${step.label} · ${step.detail ?? S.stepIncomplete}`)].join('\n'),
         });
