@@ -113,6 +113,9 @@ cpSync(join(ROOT, 'app'), join(OUT, 'app'), { recursive: true });
 cpSync(join(ROOT, 'core'), join(OUT, 'core'), { recursive: true });
 // the coopanion World (core/notice.ts) tells Coo these after an update
 cpSync(join(ROOT, 'docs', 'releases'), join(OUT, 'docs', 'releases'), { recursive: true });
+// the AGPL text and the notice of modifications travel with the binary, as section 5 asks
+cpSync(join(ROOT, 'LICENSE'), join(OUT, 'LICENSE'));
+cpSync(join(ROOT, 'NOTICE'), join(OUT, 'NOTICE'));
 cpSync(join(ROOT, 'build', 'cortico'), join(OUT, 'build', 'cortico'), { recursive: true, filter: (src) => !src.endsWith('.map') && skip(join(ROOT, 'build', 'cortico'))(src) });
 // the settings window (app/main.cjs serves it)
 cpSync(join(ROOT, 'build', 'console'), join(OUT, 'build', 'console'), { recursive: true, filter: (src) => !src.endsWith('.map') });
