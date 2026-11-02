@@ -1,6 +1,6 @@
 /** The tools of the `web-fetch` World: `web_fetch` reads one page as Markdown through DeepSeek's Fetch API. */
 import type { ToolDef } from 'cortico/core/types.ts';
-import { WEB_FETCH_DEFAULTS, WEB_FETCH_PEXELS_SECRET, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, type WebFetchConfigSection } from './config.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, type WebFetchConfigSection } from './config.ts';
 import { ImageError, readImage, type ImageFailure, type ImageResult } from './image.ts';
 import { ImageSearchError, searchImages, type ImageHit } from './image-search.ts';
 
@@ -15,8 +15,7 @@ export interface WebFetchOptions {
   storeSecret(name: string, value: string): void;
   /** Tests read from a server on this machine; the definition never sets it. */
   allowLocal?: boolean;
-  /** Tests point a provider at a local server; the definition never sets them. */
-  pexelsBase?: string;
+  /** Tests point the provider at a local server; the definition never sets it. */
   pixabayBase?: string;
 }
 
@@ -212,14 +211,12 @@ export function searchImagesTool(opts: WebFetchOptions): ToolDef {
         hits = await searchImages(query, {
           maxResults: opts.cfg.maxImageResults,
           timeoutMs: opts.cfg.timeoutMs,
-          pexelsKey: opts.secret(WEB_FETCH_PEXELS_SECRET).trim(),
           pixabayKey: opts.secret(WEB_FETCH_PIXABAY_SECRET).trim(),
-          ...(opts.pexelsBase ? { pexelsBase: opts.pexelsBase } : {}),
           ...(opts.pixabayBase ? { pixabayBase: opts.pixabayBase } : {}),
         });
       } catch (error) {
         if (error instanceof ImageSearchError) {
-          if (error.kind === 'no-provider') return `[tool failed] image search needs ${WEB_FETCH_PEXELS_SECRET} or ${WEB_FETCH_PIXABAY_SECRET}`;
+          if (error.kind === 'no-provider') return `[tool failed] image search needs ${WEB_FETCH_PIXABAY_SECRET}`;
           if (error.kind === 'no-results') return `[no results] ${error.message}`;
         }
         return `[fetch failed] ${error instanceof Error ? error.message : String(error)}`;

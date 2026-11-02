@@ -1,6 +1,6 @@
 /**
- * The search itself: which provider answers for a query, what a hit carries, and how a provider that is
- * empty, slow or refusing hands over to the next one. Both providers are real local servers here.
+ * The picture search: what a hit carries, what the query asks Pixabay for, and how an empty or
+ * refusing provider ends. Pixabay is a real local server here.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server, type ServerResponse } from 'node:http';
@@ -31,10 +31,9 @@ const json = (res: ServerResponse, body: unknown, status = 200): void => {
 };
 
 function options(overrides: Partial<ImageSearchOptions> = {}): ImageSearchOptions {
-  return { maxResults: 8, timeoutMs: 5000, pexelsKey: '', pixabayKey: '', ...overrides };
+  return { maxResults: 8, timeoutMs: 5000, pixabayKey: '', ...overrides };
 }
 
-const pexelsPhoto = (url: string, alt = 'a corgi') => ({ alt, photographer: 'Ann', src: { large: url } });
 const pixabayHit = (url: string, tags = 'corgi puppy') => ({ tags, user: 'Bob', largeImageURL: url });
 
 describe('searchImages', () => {
@@ -54,29 +53,6 @@ describe('searchImages', () => {
     expect(pixabay.hits[1]).not.toContain('lang=');
   });
 
-  it('asks Pexels first when both keys are set', async () => {
-    const pexels = await serve((_path, res) => json(res, { photos: [pexelsPhoto('https://images.pexels.com/a.jpg')] }));
-    const pixabay = await serve((_path, res) => json(res, { hits: [pixabayHit('https://cdn.pixabay.com/a.jpg')] }));
-    const hits = await searchImages('corgi', options({ pexelsKey: 'p', pixabayKey: 'q', pexelsBase: pexels.origin, pixabayBase: pixabay.origin }));
-    expect(hits[0].provider).toBe('Pexels');
-    expect(pixabay.hits).toEqual([]);
-  });
-
-  it('falls back to Pixabay when Pexels refuses the key', async () => {
-    const pexels = await serve((_path, res) => json(res, { status: 401 }, 401));
-    const pixabay = await serve((_path, res) => json(res, { hits: [pixabayHit('https://cdn.pixabay.com/a.jpg')] }));
-    const hits = await searchImages('corgi', options({ pexelsKey: 'bad', pixabayKey: 'q', pexelsBase: pexels.origin, pixabayBase: pixabay.origin }));
-    expect(hits).toHaveLength(1);
-    expect(hits[0].provider).toBe('Pixabay');
-  });
-
-  it('falls back to Pixabay when Pexels finds nothing', async () => {
-    const pexels = await serve((_path, res) => json(res, { photos: [] }));
-    const pixabay = await serve((_path, res) => json(res, { hits: [pixabayHit('https://cdn.pixabay.com/a.jpg')] }));
-    const hits = await searchImages('corgi', options({ pexelsKey: 'p', pixabayKey: 'q', pexelsBase: pexels.origin, pixabayBase: pixabay.origin }));
-    expect(hits[0].provider).toBe('Pixabay');
-  });
-
   it('caps the list at the configured count', async () => {
     const pixabay = await serve((_path, res) => json(res, {
       hits: [1, 2, 3, 4].map((n) => pixabayHit(`https://cdn.pixabay.com/${n}.jpg`)),
@@ -85,25 +61,31 @@ describe('searchImages', () => {
     expect(hits).toHaveLength(2);
   });
 
-  it('says nothing was found when the providers answer with nothing', async () => {
+  it('skips entries without a direct picture address', async () => {
+    const pixabay = await serve((_path, res) => json(res, { hits: [{ tags: 'x', largeImageURL: 'ftp://nope' }, pixabayHit('https://cdn.pixabay.com/a.jpg')] }));
+    const hits = await searchImages('corgi', options({ pixabayKey: 'k', pixabayBase: pixabay.origin }));
+    expect(hits.map((hit) => hit.url)).toEqual(['https://cdn.pixabay.com/a.jpg']);
+  });
+
+  it('says nothing was found when Pixabay answers with nothing', async () => {
     const pixabay = await serve((_path, res) => json(res, { hits: [] }));
     await expect(searchImages('unicorn', options({ pixabayKey: 'k', pixabayBase: pixabay.origin })))
       .rejects.toMatchObject({ kind: 'no-results', message: 'nothing found for "unicorn"' });
   });
 
-  it('reports the last provider failure when every provider fails', async () => {
-    const viaServe = await serve((_path, res) => json(res, {}, 500));
-    const error = await searchImages('corgi', options({ pexelsKey: 'p', pixabayKey: 'q', pexelsBase: viaServe.origin, pixabayBase: viaServe.origin }))
+  it('reports a refusal as the provider failure it was', async () => {
+    const refusing = await serve((_path, res) => json(res, {}, 500));
+    const error = await searchImages('corgi', options({ pixabayKey: 'k', pixabayBase: refusing.origin }))
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ImageSearchError);
     expect((error as ImageSearchError).kind).toBe('fetch');
     expect((error as ImageSearchError).message).toBe('HTTP 500');
   });
 
-  it('says which keys it needs when none is set', async () => {
+  it('says which key it needs when none is set', async () => {
     await expect(searchImages('corgi', options())).rejects.toMatchObject({
       kind: 'no-provider',
-      message: 'image search needs a Pexels or Pixabay key',
+      message: 'image search needs a Pixabay key',
     });
   });
 });

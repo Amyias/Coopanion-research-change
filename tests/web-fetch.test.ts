@@ -6,12 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import {
-  WEB_FETCH_DEFAULTS,
-  WEB_FETCH_PEXELS_SECRET,
-  WEB_FETCH_PIXABAY_SECRET,
-  WEB_FETCH_SECRET,
-} from '../core/web-fetch/config.ts';
+import { WEB_FETCH_DEFAULTS, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET } from '../core/web-fetch/config.ts';
 import { WEB_FETCH } from '../core/web-fetch/definition.ts';
 import { imageFetchTool, searchImagesTool, webFetchTool } from '../core/web-fetch/tools.ts';
 
@@ -57,9 +52,7 @@ const options = (overrides: {
   maxImageResults?: number;
   secret?: string;
   allowLocal?: boolean;
-  pexelsKey?: string;
   pixabayKey?: string;
-  pexelsBase?: string;
   pixabayBase?: string;
 } = {}) => ({
   cfg: {
@@ -72,13 +65,11 @@ const options = (overrides: {
   },
   secret: (name: string) => {
     if (name === WEB_FETCH_SECRET) return overrides.secret ?? 'test-key';
-    if (name === WEB_FETCH_PEXELS_SECRET) return overrides.pexelsKey ?? '';
     if (name === WEB_FETCH_PIXABAY_SECRET) return overrides.pixabayKey ?? '';
     return '';
   },
   storeSecret: () => {},
   allowLocal: overrides.allowLocal !== false,
-  ...(overrides.pexelsBase ? { pexelsBase: overrides.pexelsBase } : {}),
   ...(overrides.pixabayBase ? { pixabayBase: overrides.pixabayBase } : {}),
 });
 
@@ -93,9 +84,7 @@ function imageTool(overrides: { imageMaxBytes?: number; allowLocal?: boolean } =
 
 /** The search tool's options: a provider base points at a local server, the keys are scripted. */
 function searchTool(overrides: {
-  pexelsKey?: string;
   pixabayKey?: string;
-  pexelsBase?: string;
   pixabayBase?: string;
   maxImageResults?: number;
 } = {}) {
@@ -198,62 +187,36 @@ describe('web_fetch_image', () => {
 });
 
 describe('web_search_images', () => {
-  it('returns picture addresses and their credits from Pexels', async () => {
+  it('returns picture addresses and their credits from Pixabay', async () => {
     const { origin, hits } = await serveGet((_path, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        photos: [
-          { alt: 'a corgi on grass', photographer: 'Ann', src: { large: 'https://images.example.com/corgi.jpg' } },
-          { alt: '', photographer: '', src: { large: 'https://images.example.com/two.jpg' } },
+        hits: [
+          { tags: 'a corgi on grass', user: 'Ann', largeImageURL: 'https://images.example.com/corgi.jpg' },
+          { tags: '', user: '', largeImageURL: 'https://images.example.com/two.jpg' },
         ],
       }));
     });
-    const out = await searchTool({ pexelsKey: 'k', pexelsBase: origin }).handler({ query: 'corgi' }, {} as never);
+    const out = await searchTool({ pixabayKey: 'k', pixabayBase: origin }).handler({ query: 'corgi' }, {} as never);
     expect(out).toBe([
       'web images: corgi',
-      '1. a corgi on grass — https://images.example.com/corgi.jpg (by Ann · Pexels)',
-      '2. a picture — https://images.example.com/two.jpg (Pexels)',
+      '1. a corgi on grass — https://images.example.com/corgi.jpg (by Ann · Pixabay)',
+      '2. a picture — https://images.example.com/two.jpg (Pixabay)',
     ].join('\n'));
-    expect(hits[0]).toContain('query=corgi');
-  });
-
-  it('falls back to Pixabay when only its key is set', async () => {
-    const { origin, hits } = await serveGet((_path, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ hits: [{ tags: 'corgi puppy', user: 'Bob', largeImageURL: 'https://cdn.example.com/x.jpg' }] }));
-    });
-    const out = await searchTool({ pixabayKey: 'k', pixabayBase: origin }).handler({ query: 'corgi' }, {} as never);
-    expect(out).toBe('web images: corgi\n1. corgi puppy — https://cdn.example.com/x.jpg (by Bob · Pixabay)');
     expect(hits[0]).toContain('key=k');
   });
 
-  it('prefers Pexels when both keys are set', async () => {
-    let pixabayAsked = false;
-    const pexels = await serveGet((_path, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ photos: [{ alt: 'a corgi', photographer: 'Ann', src: { large: 'https://images.example.com/a.jpg' } }] }));
-    });
-    const pixabay = await serveGet((_path, res) => {
-      pixabayAsked = true;
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ hits: [] }));
-    });
-    await searchTool({ pexelsKey: 'p', pixabayKey: 'q', pexelsBase: pexels.origin, pixabayBase: pixabay.origin })
-      .handler({ query: 'corgi' }, {} as never);
-    expect(pixabayAsked).toBe(false);
-  });
-
-  it('says which keys it needs when neither is set', async () => {
+  it('says which key it needs when none is set', async () => {
     expect(await searchTool().handler({ query: 'corgi' }, {} as never))
-      .toBe('[tool failed] image search needs PEXELS_API_KEY or PIXABAY_API_KEY');
+      .toBe('[tool failed] image search needs PIXABAY_API_KEY');
   });
 
   it('reports an empty answer as nothing found', async () => {
     const { origin } = await serveGet((_path, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ photos: [] }));
+      res.end(JSON.stringify({ hits: [] }));
     });
-    expect(await searchTool({ pexelsKey: 'k', pexelsBase: origin }).handler({ query: 'nonexistent' }, {} as never))
+    expect(await searchTool({ pixabayKey: 'k', pixabayBase: origin }).handler({ query: 'nonexistent' }, {} as never))
       .toBe('[no results] nothing found for "nonexistent"');
   });
 
@@ -262,7 +225,7 @@ describe('web_search_images', () => {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 401 }));
     });
-    expect(await searchTool({ pexelsKey: 'bad', pexelsBase: origin }).handler({ query: 'corgi' }, {} as never))
+    expect(await searchTool({ pixabayKey: 'bad', pixabayBase: origin }).handler({ query: 'corgi' }, {} as never))
       .toBe('[fetch failed] HTTP 401');
   });
 
@@ -294,14 +257,13 @@ describe('the settings page', () => {
     expect(ui.badges?.map((badge) => [badge.label, badge.value])).toEqual([
       ['Page key', 'none'],
       ['Pixabay key', 'Set'],
-      ['Pexels key', 'none'],
     ]);
   });
 
   it('never returns a whole key, only its masked form', async () => {
     const { world } = settingsWorld({ [WEB_FETCH_PIXABAY_SECRET]: 'abcdefghijklmnop' });
     const state = await world.webUi!().invoke!('setup', 'state', []) as Record<string, string | null>;
-    expect(state).toEqual({ fetch: null, pixabay: 'abcdef…mnop', pexels: null });
+    expect(state).toEqual({ fetch: null, pixabay: 'abcdef…mnop' });
   });
 
   it('saves and clears a key through the World, so the next search reads it', async () => {
@@ -329,7 +291,7 @@ describe('the settings page', () => {
     const { world } = settingsWorld();
     const ui = world.webUi!('en');
     expect(ui.panels?.[0]).toMatchObject({ id: 'setup', getMethods: ['state'] });
-    await expect(ui.invoke!('setup', 'test', [])).rejects.toThrow('Set a Pixabay or Pexels key before testing');
+    await expect(ui.invoke!('setup', 'test', [])).rejects.toThrow('Set a Pixabay key before testing');
   });
 
   it('renders its own settings group', () => {

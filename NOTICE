@@ -21,7 +21,7 @@ Modifications, as AGPL section 5 requires a modified version to state:
 - A bundled World in core/web-fetch/ adds web_fetch (one page as Markdown),
   web_fetch_image (one image as an attachment, with a size cap and a refusal of
   local and private addresses), and web_search_images (picture addresses from
-  Pixabay or Pexels). It has its own settings page.
+  Pixabay). It has its own settings page.
 - The desktop pet page shows the pictures a say message carries, one at a time
   with arrows, and enlarges one on a click (packages/cortico-world-desktop-pet).
 - On Windows the update check and download use Node's https instead of

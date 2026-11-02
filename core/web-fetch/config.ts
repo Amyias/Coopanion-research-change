@@ -6,8 +6,7 @@ import { webFetchText } from './strings.ts';
 
 /** The secret the websearch World's DeepSeek provider stores; the Fetch API takes the same key. */
 export const WEB_FETCH_SECRET = 'DEEPSEEK_SEARCH_API_KEY';
-/** Image search keys: either one is enough, Pexels first. */
-export const WEB_FETCH_PEXELS_SECRET = 'PEXELS_API_KEY';
+/** The picture search key, from pixabay.com/api/docs. */
 export const WEB_FETCH_PIXABAY_SECRET = 'PIXABAY_API_KEY';
 
 export interface WebFetchConfigSection extends WorldSection {
@@ -26,7 +25,6 @@ export interface WebFetchConfigSection extends WorldSection {
 export interface WebFetchPanelState {
   fetch: string | null;
   pixabay: string | null;
-  pexels: string | null;
 }
 
 /** The settings group the advanced mode renders for this World; every key applies at once. */

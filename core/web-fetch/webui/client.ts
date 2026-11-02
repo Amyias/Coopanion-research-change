@@ -1,22 +1,20 @@
 /**
- * WebFetch 的「快速配置」页签:三个密钥(网页 / Pixabay / Pexels),粘贴即写进部署 .env,
+ * WebFetch 的「快速配置」页签:两个密钥(网页 / Pixabay),粘贴即写进部署 .env,
  * 页面只拿得到打码后的样子;下面一个测试按钮,用当前密钥搜一次。
  */
 import type { WebUiClientBundle, WebUiPanel, WebUiPanelContext } from 'cortico/web/shared/client-panel.ts';
 import type { WebFetchPanelState } from '../config.ts';
 import { webFetchText } from '../strings.ts';
 
-const NAMES = ['fetch', 'pixabay', 'pexels'] as const;
+const NAMES = ['fetch', 'pixabay'] as const;
 type KeyName = (typeof NAMES)[number];
-const KEY_LABELS: Record<KeyName, 'fetchKey' | 'pixabayKey' | 'pexelsKey'> = {
+const KEY_LABELS: Record<KeyName, 'fetchKey' | 'pixabayKey'> = {
   fetch: 'fetchKey',
   pixabay: 'pixabayKey',
-  pexels: 'pexelsKey',
 };
 const KEY_URLS: Record<KeyName, string> = {
   fetch: 'https://platform.deepseek.com/api_keys',
   pixabay: 'https://pixabay.com/api/docs/',
-  pexels: 'https://www.pexels.com/api/',
 };
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));

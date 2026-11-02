@@ -1,7 +1,7 @@
 /** The `web-fetch` World's class: it mounts the tools and has no environment section of its own. */
 import type { Language } from 'cortico/core/language.ts';
 import type { ToolDef, World, WorldHost, WorldWebUiDecl } from 'cortico/core/types.ts';
-import { WEB_FETCH_PEXELS_SECRET, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, webFetchConfigGroup, type WebFetchPanelState } from './config.ts';
+import { WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, webFetchConfigGroup, type WebFetchPanelState } from './config.ts';
 import { searchImages } from './image-search.ts';
 import { webFetchText } from './strings.ts';
 import { imageFetchTool, searchImagesTool, webFetchTool, type WebFetchOptions } from './tools.ts';
@@ -12,7 +12,6 @@ const SETUP_PANEL = 'setup';
 const SECRET_NAMES: Readonly<Record<string, string>> = {
   fetch: WEB_FETCH_SECRET,
   pixabay: WEB_FETCH_PIXABAY_SECRET,
-  pexels: WEB_FETCH_PEXELS_SECRET,
 };
 
 /** A key as the page shows it: its first six and last four characters. */
@@ -40,7 +39,7 @@ export class WebFetchWorld implements World {
   webUi(language: Language = 'zh'): WorldWebUiDecl {
     const t = webFetchText(language);
     const has = (name: string) => !!this.opts.secret(name).trim();
-    const search = has(WEB_FETCH_PIXABAY_SECRET) || has(WEB_FETCH_PEXELS_SECRET);
+    const search = has(WEB_FETCH_PIXABAY_SECRET);
     return {
       label: t.moduleLabel,
       lamps: [
@@ -50,7 +49,6 @@ export class WebFetchWorld implements World {
       badges: [
         { label: t.fetchKey, value: has(WEB_FETCH_SECRET) ? t.keySet : t.keyUnsetBadge, tone: has(WEB_FETCH_SECRET) ? 'on' : 'off' },
         { label: t.pixabayKey, value: has(WEB_FETCH_PIXABAY_SECRET) ? t.keySet : t.keyUnsetBadge, tone: has(WEB_FETCH_PIXABAY_SECRET) ? 'on' : 'off' },
-        { label: t.pexelsKey, value: has(WEB_FETCH_PEXELS_SECRET) ? t.keySet : t.keyUnsetBadge, tone: has(WEB_FETCH_PEXELS_SECRET) ? 'on' : 'off' },
       ],
       panels: [{ id: SETUP_PANEL, title: t.panelTitle, description: t.panelDescription, getMethods: ['state'] }],
       invoke: (panel, method, args) => this.invoke(panel, method, args, language),
@@ -64,7 +62,7 @@ export class WebFetchWorld implements World {
       const key = this.opts.secret(name).trim();
       return key ? maskKey(key) : null;
     };
-    return { fetch: masked(WEB_FETCH_SECRET), pixabay: masked(WEB_FETCH_PIXABAY_SECRET), pexels: masked(WEB_FETCH_PEXELS_SECRET) };
+    return { fetch: masked(WEB_FETCH_SECRET), pixabay: masked(WEB_FETCH_PIXABAY_SECRET) };
   }
 
   private async invoke(panel: string, method: string, args: unknown[], language: Language): Promise<unknown> {
@@ -89,10 +87,9 @@ export class WebFetchWorld implements World {
         return this.panelState();
       }
       case 'test': {
-        const pexelsKey = this.opts.secret(WEB_FETCH_PEXELS_SECRET).trim();
         const pixabayKey = this.opts.secret(WEB_FETCH_PIXABAY_SECRET).trim();
-        if (!pexelsKey && !pixabayKey) throw new Error(t.noTestKey);
-        const hits = await searchImages(t.testQuery, { maxResults: 1, timeoutMs: this.opts.cfg.timeoutMs, pexelsKey, pixabayKey });
+        if (!pixabayKey) throw new Error(t.noTestKey);
+        const hits = await searchImages(t.testQuery, { maxResults: 1, timeoutMs: this.opts.cfg.timeoutMs, pixabayKey });
         return { ok: true, provider: hits[0]?.provider ?? '', count: hits.length, text: t.testOk(hits.length, hits[0]?.provider ?? '') };
       }
       default:
