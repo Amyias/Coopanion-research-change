@@ -3,6 +3,7 @@ import type { ToolDef } from 'cortico/core/types.ts';
 import { WEB_FETCH_DEFAULTS, WEB_FETCH_PIXABAY_SECRET, WEB_FETCH_SECRET, type WebFetchConfigSection } from './config.ts';
 import { ImageError, readImage, type ImageFailure, type ImageResult } from './image.ts';
 import { ImageSearchError, searchImages, type ImageHit } from './image-search.ts';
+import { readPageImages } from './page-images.ts';
 
 /** The API refuses a longer URL, and one with credentials in it. */
 const URL_MAX = 8192;
@@ -31,7 +32,7 @@ const URL_PARAMETERS = {
 export const WEB_FETCH_TOOL_DECL: Omit<ToolDef, 'handler'> = {
   name: 'web_fetch',
   description:
-    'Read one web page as Markdown. Use it when the person hands over a link or a search result needs its full text; web_search results usually carry enough summary on their own. One page per call.',
+    'Read one web page as Markdown, then list the picture addresses it carries when the page allows a direct read; hand one to web_fetch_image to look at it. Use it when the person hands over a link or a search result needs its full text; web_search results usually carry enough summary on their own. One page per call.',
   tags: ['read'],
   parameters: URL_PARAMETERS,
 };
@@ -159,7 +160,20 @@ export function webFetchTool(opts: WebFetchOptions): ToolDef {
       const content = page.content.length > opts.cfg.maxChars
         ? `${page.content.slice(0, opts.cfg.maxChars)}\n…(truncated: ${page.content.length} characters in all)`
         : page.content;
-      return [`web_fetch: ${url}`, page.title || '(untitled)', '', content].join('\n');
+      const lines = [`web_fetch: ${url}`, page.title || '(untitled)', '', content];
+      const images = opts.cfg.maxImageLinks > 0
+        ? await readPageImages(url, {
+          timeoutMs: Math.min(opts.cfg.timeoutMs, 5000),
+          maxBytes: opts.cfg.pageMaxBytes,
+          maxImages: opts.cfg.maxImageLinks,
+          ...(opts.allowLocal ? { allowLocal: true } : {}),
+        }).catch(() => [])
+        : [];
+      if (images.length > 0) {
+        lines.push('', `Pictures on this page (${images.length}):`);
+        images.forEach((image, index) => lines.push(`${index + 1}. ${image.alt || 'a picture'} — ${image.url}`));
+      }
+      return lines.join('\n');
     },
   };
 }

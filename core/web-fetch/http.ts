@@ -67,7 +67,10 @@ export interface OpenOptions {
 export interface OpenResult {
   url: string;
   bytes: Uint8Array;
+  /** The media type alone, lowercased, for a prefix check. */
   type: string;
+  /** The whole content-type header, which carries a charset for text. */
+  contentType: string;
 }
 
 /**
@@ -94,7 +97,8 @@ export async function openUrl(raw: string, opts: OpenOptions): Promise<OpenResul
         await res.body?.cancel();
         throw new OpenError('fetch', `HTTP ${res.status}`);
       }
-      const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      const contentType = res.headers.get('content-type') ?? '';
+      const type = contentType.split(';')[0].trim().toLowerCase();
       const prefix = opts.typePrefix ?? '';
       if (prefix && type && !type.startsWith(prefix)) {
         await res.body?.cancel();
@@ -125,7 +129,7 @@ export async function openUrl(raw: string, opts: OpenOptions): Promise<OpenResul
         bytes.set(chunk, at);
         at += chunk.byteLength;
       }
-      return { url: url.href, bytes, type };
+      return { url: url.href, bytes, type, contentType };
     }
   } catch (error) {
     if (error instanceof OpenError) throw error;

@@ -19,6 +19,10 @@ export interface WebFetchConfigSection extends WorldSection {
   imageMaxBytes: number;
   /** How many picture addresses one search returns. */
   maxImageResults: number;
+  /** Picture addresses listed under a page read; the page itself is read through the API and not bounded by this. */
+  maxImageLinks: number;
+  /** A page whose HTML is larger than this is not searched for picture addresses. */
+  pageMaxBytes: number;
 }
 
 /** 「快速配置」页签 `state` 的形状:密钥只给打码后的样子。 */
@@ -68,6 +72,22 @@ export function webFetchConfigGroup(language: Language = 'zh'): ConfigGroup {
           'x-hot': true,
           description: t.maxImageResultsDescription,
         },
+        'worlds.web-fetch.maxImageLinks': {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          title: t.maxImageLinksTitle,
+          'x-hot': true,
+          description: t.maxImageLinksDescription,
+        },
+        'worlds.web-fetch.pageMaxBytes': {
+          type: 'integer',
+          minimum: 64 * 1024,
+          maximum: 8 * 1024 * 1024,
+          title: t.pageMaxBytesTitle,
+          'x-hot': true,
+          description: t.pageMaxBytesDescription,
+        },
         'worlds.web-fetch.timeoutMs': {
           type: 'integer',
           minimum: 1000,
@@ -88,4 +108,6 @@ export const WEB_FETCH_DEFAULTS = {
   maxChars: 6_000,
   imageMaxBytes: 8 * 1024 * 1024,
   maxImageResults: 8,
+  maxImageLinks: 12,
+  pageMaxBytes: 2 * 1024 * 1024,
 } as const satisfies WebFetchConfigSection;

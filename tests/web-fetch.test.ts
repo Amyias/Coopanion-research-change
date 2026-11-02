@@ -303,6 +303,8 @@ describe('the settings page', () => {
       'worlds.web-fetch.maxChars',
       'worlds.web-fetch.imageMaxBytes',
       'worlds.web-fetch.maxImageResults',
+      'worlds.web-fetch.maxImageLinks',
+      'worlds.web-fetch.pageMaxBytes',
       'worlds.web-fetch.timeoutMs',
     ]);
     expect(group?.schema.properties['worlds.web-fetch.maxChars']).toMatchObject({ type: 'integer', 'x-hot': true });
