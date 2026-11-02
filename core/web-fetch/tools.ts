@@ -16,8 +16,9 @@ export interface WebFetchOptions {
   storeSecret(name: string, value: string): void;
   /** Tests read from a server on this machine; the definition never sets it. */
   allowLocal?: boolean;
-  /** Tests point the provider at a local server; the definition never sets it. */
+  /** Tests point the providers at a local server; the definition never sets them. */
   pixabayBase?: string;
+  bingBase?: string;
 }
 
 const URL_PARAMETERS = {
@@ -48,7 +49,7 @@ export const WEB_FETCH_IMAGE_TOOL_DECL: Omit<ToolDef, 'handler'> = {
 export const WEB_FETCH_SEARCH_IMAGES_TOOL_DECL: Omit<ToolDef, 'handler'> = {
   name: 'web_search_images',
   description:
-    'Find pictures on the web and return their direct URLs, one per line. Hand one of those URLs to web_fetch_image to look at the picture. Use it when the person asks for a picture of something.',
+    'Find pictures on the web and return their direct URLs, one per line. Pixabay answers when its key is set; otherwise, or when it finds nothing, Bing\'s image search answers. Hand one of those URLs to web_fetch_image to look at the picture. Use it when the person asks for a picture of something.',
   tags: ['read'],
   parameters: {
     type: 'object',
@@ -226,7 +227,10 @@ export function searchImagesTool(opts: WebFetchOptions): ToolDef {
           maxResults: opts.cfg.maxImageResults,
           timeoutMs: opts.cfg.timeoutMs,
           pixabayKey: opts.secret(WEB_FETCH_PIXABAY_SECRET).trim(),
+          bingFallback: opts.cfg.bingFallback,
           ...(opts.pixabayBase ? { pixabayBase: opts.pixabayBase } : {}),
+          ...(opts.bingBase ? { bingBase: opts.bingBase } : {}),
+          ...(opts.allowLocal ? { allowLocal: true } : {}),
         });
       } catch (error) {
         if (error instanceof ImageSearchError) {

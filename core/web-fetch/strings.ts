@@ -21,6 +21,8 @@ const zh = {
   maxImageLinksDescription: '读网页时附在正文后的图片地址最多几条。',
   pageMaxBytesTitle: '网页 HTML 上限',
   pageMaxBytesDescription: '页面源码超过这个大小就不去找图片地址。',
+  bingFallbackTitle: '必应图片兜底',
+  bingFallbackDescription: 'Pixabay 没配密钥或没结果时，用必应图片搜索补上（免密钥）。',
   timeoutTitle: '请求超时',
   timeoutDescription: '单次请求的超时。',
   // WebUI
@@ -67,6 +69,8 @@ const en: typeof zh = {
   maxImageLinksDescription: 'How many picture addresses follow a page read.',
   pageMaxBytesTitle: 'Page HTML limit',
   pageMaxBytesDescription: 'A page larger than this is not searched for picture addresses.',
+  bingFallbackTitle: 'Bing picture fallback',
+  bingFallbackDescription: 'Ask Bing image search when Pixabay has no key or finds nothing (no key needed).',
   timeoutTitle: 'Request timeout',
   timeoutDescription: 'Timeout of one request.',
   fetch: 'Pages',

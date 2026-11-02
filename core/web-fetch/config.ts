@@ -23,6 +23,8 @@ export interface WebFetchConfigSection extends WorldSection {
   maxImageLinks: number;
   /** A page whose HTML is larger than this is not searched for picture addresses. */
   pageMaxBytes: number;
+  /** Ask Bing's image search when Pixabay has no key or finds nothing. */
+  bingFallback: boolean;
 }
 
 /** 「快速配置」页签 `state` 的形状:密钥只给打码后的样子。 */
@@ -88,6 +90,12 @@ export function webFetchConfigGroup(language: Language = 'zh'): ConfigGroup {
           'x-hot': true,
           description: t.pageMaxBytesDescription,
         },
+        'worlds.web-fetch.bingFallback': {
+          type: 'boolean',
+          title: t.bingFallbackTitle,
+          'x-hot': true,
+          description: t.bingFallbackDescription,
+        },
         'worlds.web-fetch.timeoutMs': {
           type: 'integer',
           minimum: 1000,
@@ -110,4 +118,5 @@ export const WEB_FETCH_DEFAULTS = {
   maxImageResults: 8,
   maxImageLinks: 12,
   pageMaxBytes: 2 * 1024 * 1024,
+  bingFallback: true,
 } as const satisfies WebFetchConfigSection;

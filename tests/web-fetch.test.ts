@@ -54,6 +54,8 @@ const options = (overrides: {
   allowLocal?: boolean;
   pixabayKey?: string;
   pixabayBase?: string;
+  bingFallback?: boolean;
+  bingBase?: string;
 } = {}) => ({
   cfg: {
     ...WEB_FETCH_DEFAULTS,
@@ -62,6 +64,7 @@ const options = (overrides: {
     ...(overrides.maxChars !== undefined ? { maxChars: overrides.maxChars } : {}),
     ...(overrides.imageMaxBytes !== undefined ? { imageMaxBytes: overrides.imageMaxBytes } : {}),
     ...(overrides.maxImageResults !== undefined ? { maxImageResults: overrides.maxImageResults } : {}),
+    bingFallback: overrides.bingFallback ?? false,
   },
   secret: (name: string) => {
     if (name === WEB_FETCH_SECRET) return overrides.secret ?? 'test-key';
@@ -71,6 +74,7 @@ const options = (overrides: {
   storeSecret: () => {},
   allowLocal: overrides.allowLocal !== false,
   ...(overrides.pixabayBase ? { pixabayBase: overrides.pixabayBase } : {}),
+  ...(overrides.bingBase ? { bingBase: overrides.bingBase } : {}),
 });
 
 function tool(baseUrl: string, overrides: { maxChars?: number; secret?: string } = {}) {
@@ -87,6 +91,8 @@ function searchTool(overrides: {
   pixabayKey?: string;
   pixabayBase?: string;
   maxImageResults?: number;
+  bingFallback?: boolean;
+  bingBase?: string;
 } = {}) {
   return searchImagesTool(options(overrides));
 }
@@ -305,6 +311,7 @@ describe('the settings page', () => {
       'worlds.web-fetch.maxImageResults',
       'worlds.web-fetch.maxImageLinks',
       'worlds.web-fetch.pageMaxBytes',
+      'worlds.web-fetch.bingFallback',
       'worlds.web-fetch.timeoutMs',
     ]);
     expect(group?.schema.properties['worlds.web-fetch.maxChars']).toMatchObject({ type: 'integer', 'x-hot': true });

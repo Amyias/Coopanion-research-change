@@ -1,10 +1,12 @@
 /**
  * Finding pictures on the web: a provider answers with a picture's direct address, which is what
- * `web_fetch_image` takes. Pixabay needs a free key, set once in the settings page.
+ * `web_fetch_image` takes. Pixabay needs a free key, set once in the settings page; Bing's image
+ * search needs none, so it answers when the API has no key or finds nothing.
  */
+import { searchBingImages } from './bing-images.ts';
 import { reasonOf } from './image.ts';
 
-export type ImageProvider = 'Pixabay';
+export type ImageProvider = 'Pixabay' | 'Bing';
 
 export interface ImageHit {
   /** What the picture shows, in the provider's words. */
@@ -33,6 +35,10 @@ export interface ImageSearchOptions {
   pixabayKey: string;
   /** Tests point the provider at a local server; nothing else sets this. */
   pixabayBase?: string;
+  /** The keyless fallback; on unless the config turns it off. */
+  bingFallback?: boolean;
+  bingBase?: string;
+  allowLocal?: boolean;
 }
 
 const PIXABAY_BASE = 'https://pixabay.com/api';
@@ -79,12 +85,31 @@ async function fromPixabay(query: string, opts: ImageSearchOptions, key: string)
   });
 }
 
-/** Picture addresses for a query; without a key the call has no provider to ask. */
+/** Picture addresses for a query, from the first provider that has one; a refusal is the last one's reason. */
 export async function searchImages(query: string, opts: ImageSearchOptions): Promise<ImageHit[]> {
-  if (!opts.pixabayKey) {
+  const providers: Array<() => Promise<ImageHit[]>> = [];
+  if (opts.pixabayKey) providers.push(() => fromPixabay(query, opts, opts.pixabayKey));
+  if (opts.bingFallback !== false) {
+    providers.push(() => searchBingImages(query, {
+      maxResults: opts.maxResults,
+      timeoutMs: opts.timeoutMs,
+      ...(opts.bingBase ? { base: opts.bingBase } : {}),
+      ...(opts.allowLocal ? { allowLocal: true } : {}),
+    }));
+  }
+  if (providers.length === 0) {
     throw new ImageSearchError('no-provider', 'image search needs a Pixabay key');
   }
-  const hits = await fromPixabay(query, opts, opts.pixabayKey);
-  if (hits.length === 0) throw new ImageSearchError('no-results', `nothing found for "${query}"`);
-  return hits.slice(0, opts.maxResults);
+
+  let lastError: unknown;
+  for (const provider of providers) {
+    try {
+      const hits = await provider();
+      if (hits.length > 0) return hits.slice(0, opts.maxResults);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  throw new ImageSearchError('no-results', `nothing found for "${query}"`);
 }

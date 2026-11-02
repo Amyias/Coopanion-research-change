@@ -62,6 +62,8 @@ export interface OpenOptions {
   allowLocal?: boolean;
   /** The content-type prefix the answer must declare; empty accepts any type, and an answer without one passes. */
   typePrefix?: string;
+  /** Extra request headers, for the sites that answer a reader differently when it does not look like a browser. */
+  headers?: Record<string, string>;
 }
 
 export interface OpenResult {
@@ -86,7 +88,7 @@ export async function openUrl(raw: string, opts: OpenOptions): Promise<OpenResul
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new OpenError('blocked', `${url.protocol} is not http or https`);
       if (url.username || url.password) throw new OpenError('blocked', 'the URL carries credentials');
       if (!opts.allowLocal) await assertPublicHost(url);
-      const res = await fetch(url, { redirect: 'manual', signal: abort.signal });
+      const res = await fetch(url, { redirect: 'manual', signal: abort.signal, ...(opts.headers ? { headers: opts.headers } : {}) });
       if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
         await res.body?.cancel();
         if (hop >= MAX_REDIRECTS) throw new OpenError('fetch', `more than ${MAX_REDIRECTS} redirects`);

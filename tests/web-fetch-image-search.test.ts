@@ -31,7 +31,7 @@ const json = (res: ServerResponse, body: unknown, status = 200): void => {
 };
 
 function options(overrides: Partial<ImageSearchOptions> = {}): ImageSearchOptions {
-  return { maxResults: 8, timeoutMs: 5000, pixabayKey: '', ...overrides };
+  return { maxResults: 8, timeoutMs: 5000, pixabayKey: '', bingFallback: false, ...overrides };
 }
 
 const pixabayHit = (url: string, tags = 'corgi puppy') => ({ tags, user: 'Bob', largeImageURL: url });
