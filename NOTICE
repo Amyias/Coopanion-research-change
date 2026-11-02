@@ -18,10 +18,12 @@ Modifications, as AGPL section 5 requires a modified version to state:
 
 - Web search is mounted by default for new deployments (core/seed.ts,
   core/companion.ts), and the vendored websearch World stays mounted.
-- A bundled World in core/web-fetch/ adds web_fetch (one page as Markdown),
+- A bundled World in core/web-fetch/ adds web_fetch (one page as Markdown, followed
+  by the picture addresses its HTML carries when the page allows a direct read),
   web_fetch_image (one image as an attachment, with a size cap and a refusal of
   local and private addresses), and web_search_images (picture addresses from
-  Pixabay). It has its own settings page.
+  Pixabay, or from Bing's image search when Pixabay has no key or finds nothing).
+  It has its own settings page.
 - The desktop pet page shows the pictures a say message carries, one at a time
   with arrows, and enlarges one on a click (packages/cortico-world-desktop-pet).
 - On Windows the update check and download use Node's https instead of
