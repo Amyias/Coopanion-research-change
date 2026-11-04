@@ -1,6 +1,6 @@
 # Coopanion one-line installer for Windows 10/11 (x64).
 #
-#   irm https://raw.githubusercontent.com/Pal-AI-Lab/Coopanion/main/installer/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Amyias/Coopanion-research-change/main/installer/install.ps1 | iex
 #
 # Downloads the installer of the latest GitHub release into %TEMP%, runs it, and deletes it — unless
 # it exits with an error, in which case the download stays for a retry. The installer is per-user (no
@@ -8,7 +8,7 @@
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$repo = 'Pal-AI-Lab/Coopanion'
+$repo = 'Amyias/Coopanion-research-change'
 Write-Host 'Looking for the latest version...'
 $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers @{ 'User-Agent' = 'Coopanion-installer' }
 $asset = $release.assets | Where-Object { $_.name -like 'Coopanion-Setup-*.exe' } | Select-Object -First 1
