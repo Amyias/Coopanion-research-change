@@ -140,7 +140,7 @@ export interface PetBotControls {
 /**
  * One step of a conversation an embedding app holds through the pet's bubble (`dialog`): Coo says
  * `text`, then shows `input`, if any, in the same bubble. `step` draws progress dots, `closable`
- * a close button.
+ * a close button, `back` a button with that label before the dots.
  */
 export interface PetDialog {
   text: string;
@@ -150,6 +150,7 @@ export interface PetDialog {
   actions?: string[];
   step?: [number, number];
   closable?: boolean;
+  back?: string;
   input?: PetDialogInput;
 }
 
@@ -183,11 +184,11 @@ export type PetDialogChoice = {
 
 /**
  * How a step ended: a button or card (`index`), typed text, the text box's `alt`, the close
- * button, the line read to the end with nothing to answer (`done`, also a progress step the app
+ * button, the back button, the line read to the end with nothing to answer (`done`, also a progress step the app
  * closed), or no pet page to show it on.
  */
 export type PetDialogAnswer =
-  | { index: number } | { text: string } | { alt: true } | { closed: true } | { done: true } | { unavailable: true };
+  | { index: number } | { text: string } | { alt: true } | { closed: true } | { back: true } | { done: true } | { unavailable: true };
 
 /** What the app changes on a step while it is up: the line, and a progress step's bar (0–1, or null while there is no telling). */
 export interface PetDialogUpdate {
@@ -1179,7 +1180,7 @@ export class DesktopPetWorld implements World {
         this.dialogs.delete(String(msg.id));
         settle(typeof msg.index === 'number' ? { index: msg.index }
           : typeof msg.text === 'string' ? { text: msg.text.slice(0, 2000) }
-          : msg.alt ? { alt: true } : msg.closed ? { closed: true } : { done: true });
+          : msg.alt ? { alt: true } : msg.closed ? { closed: true } : msg.back ? { back: true } : { done: true });
         return;
       }
       case 'commit': return this.commitSpeech();
