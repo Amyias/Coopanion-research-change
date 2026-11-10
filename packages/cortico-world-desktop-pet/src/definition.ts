@@ -12,9 +12,6 @@ import { petToolDecls } from './tools.ts';
 import { SELF_TYPE } from './chat.ts';
 import { petText } from './i18n/index.ts';
 
-/** The console keeps the bot's avatar here, in the deployment directory. */
-const AVATAR_FILE = 'avatar.png';
-
 /** Every tool the World can give (the computer-use ones while computer use is on, the way to its switch while it is off) and every event it pushes. */
 const DESCRIBE: WorldDescribe = {
   tools: describeTools([...petToolDecls(), ...CUA_OFF_TOOL_DECLS, ...CUA_TOOL_DECLS], {
@@ -59,6 +56,10 @@ const DESCRIBE: WorldDescribe = {
       description: { zh: '使用者戳、摸、扔出或拎起放下了桌宠。', en: 'The person poked, patted, threw or dropped the pet.' },
     },
     {
+      type: 'desktop-pet.talk-key',
+      description: { zh: '说话键读不到,语音输入开着时每次运行每种原因一条。', en: 'The talk key cannot be read; once a run for each reason, while voice input is on.' },
+    },
+    {
       type: 'desktop-pet.figure',
       description: { zh: '使用者换了形象或装扮,或形象没能加载。', en: 'The person switched the figure or its dress, or a figure failed to load.' },
     },
@@ -82,6 +83,8 @@ export interface DesktopPetAssembly {
   packRoots?(): string[];
   /** Called after the bot changed its own settings (`pet_set`). */
   onBotChange?(): void;
+  /** Called when the pet window comes onto the desktop or leaves it (`onDesktop` of the pet panel's state). */
+  onDesktopChange?(onDesktop: boolean): void;
   /** What the status bubble shows for a tool call; see `DescribeTool`. */
   describeTool?: DescribeTool;
   /** The language of what the bot reads from this World, read at each use; Chinese when absent. */
@@ -116,11 +119,11 @@ export function desktopPetDefinition(assembly: DesktopPetAssembly = {}): WorldDe
         asrApiKey: () => ctx.secret(DESKTOP_PET_SECRETS.asrApiKey),
         storeAsrApiKey: (key) => ctx.storeSecret(DESKTOP_PET_SECRETS.asrApiKey, key),
         botName: () => assembly.botName?.() ?? ctx.botName,
-        avatarFile: join(ctx.botDir, AVATAR_FILE),
         controls: assembly.controls,
         packRoots: () => [join(ctx.dataDir, 'figures'), ...assembly.packRoots?.() ?? []],
         packDir: () => join(ctx.dataDir, 'figures'),
         onBotChange: () => assembly.onBotChange?.(),
+        onDesktopChange: (on) => assembly.onDesktopChange?.(on),
         describeTool: assembly.describeTool,
         modelLanguage: () => assembly.modelLanguage?.() ?? 'zh',
         replyLanguage: () => assembly.replyLanguage?.() ?? null,
