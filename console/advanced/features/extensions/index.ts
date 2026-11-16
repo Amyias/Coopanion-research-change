@@ -8,9 +8,10 @@ import { gallery, takeImages } from './gallery.ts';
 import type { FeatureContext } from '../feature.ts';
 import { S } from './strings.ts';
 import { CATALOG_CATEGORY_IDS, inCatalogCategory, isFunctionTag, type CatalogCategory } from './catalog.ts';
-import { problemPopover, problemAnchorVisible, listProblem, scrollerOf, wheelDelta } from '../../../base/ui/problem.ts';
+import { problemPopover, problemAnchorVisible, listProblem, scrollerOf, wheelInto } from '../../../base/ui/problem.ts';
 import { fold, measureReflow, prefersStill } from '../../../base/motion.ts';
 import { matchRanges, matchRank, prepareFields, searchTerms, type MatchRank, type PreparedFields } from './search.ts';
+import { hideTip, showTip } from '../../../base/ui/tip.ts';
 
 /** 扩展类别。与 `ExtensionKind` 同形;这一页只用它分组与选关键字。 */
 export type ExtensionKindView = 'world' | 'provider' | 'bot';
@@ -569,7 +570,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     const target = event.target as Element;
     if (target.closest('.world-catalog-scroll, .world-catalog-filters, select, textarea')) return;
     const own = scrollerOf(target); if (own && root.contains(own) && own !== root) return;
-    event.preventDefault(); scrollRoot.scrollBy({ top: wheelDelta(event) });
+    wheelInto(scrollRoot, event);
   }, { passive: false, signal });
   const narrowFilters = win.matchMedia?.('(max-width: 760px)');
   let narrowFiltersOpen = false;
@@ -684,13 +685,13 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
   doc.body.append(hintBox); lifecycle.add(() => hintBox.remove());
   let hideTimer: { dispose(): void } | null = null;
   const keepHint = () => { hideTimer?.dispose(); hideTimer = null; };
-  const hideHint = () => { keepHint(); hintBox.classList.add('hidden'); };
+  const hideHint = () => { keepHint(); hideTip(hintBox); };
   const hideSoon = () => { keepHint(); hideTimer = lifecycle.timeout(hideHint, 150); };
   hintBox.addEventListener('pointerenter', keepHint, { signal });
   hintBox.addEventListener('pointerleave', hideSoon, { signal });
   let hintAnchor: Element | null = null;
   // Floating tips sit over the page; the wheel still scrolls what is under them.
-  hintBox.addEventListener('wheel', event => { const target = scrollerOf(hintAnchor); hideHint(); if (target) { event.preventDefault(); target.scrollBy({ top: wheelDelta(event) }); } }, { passive: false, signal });
+  hintBox.addEventListener('wheel', event => { const target = scrollerOf(hintAnchor); hideHint(); if (target) wheelInto(target, event); }, { passive: false, signal });
   const problems = problemPopover(doc, signal);
   /** Operation errors whose control was out of view, by operation; each opens once its control is in view. */
   const pendingProblems = new Map<string, { anchor: Anchor; text: string }>();
@@ -742,7 +743,7 @@ export function mountExtensionContent(ctx: FeatureContext, kind: Category, works
     const show = () => {
       keepHint(); hintAnchor = el;
       const heading = typeof title === 'string' ? title : title(); if (!heading) return;
-      hintBox.replaceChildren(ui.h('b', '', heading), ...(text ? [hintBody(text)] : [])); hintBox.classList.toggle('is-title-only', !text); hintBox.classList.remove('hidden');
+      hintBox.replaceChildren(ui.h('b', '', heading), ...(text ? [hintBody(text)] : [])); hintBox.classList.toggle('is-title-only', !text); showTip(hintBox);
       const target = el.getBoundingClientRect(), tip = hintBox.getBoundingClientRect(), view = doc.documentElement;
       const below = target.bottom + 8, above = target.top - tip.height - 8;
       hintBox.style.top = `${below + tip.height > view.clientHeight - 8 && above > 8 ? above : below}px`;

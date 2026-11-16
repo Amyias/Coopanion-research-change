@@ -29,6 +29,7 @@ export default {
   // the status bubble
   'status.more': ' 和另外 {others} 個',
   'status.thinking': '思考中',
+  'status.seconds': '{seconds} 秒',
 
   // the menu and the hover buttons
   'roam.off': '不亂動',
@@ -47,6 +48,8 @@ export default {
   'action.themeLight': '夜間模式：已關閉 · 點一下開啟',
   'action.soundOn': '音效：已開啟 · 點一下關閉',
   'action.soundOff': '音效：已關閉 · 點一下開啟',
+  'action.size': '大小：{pct}%',
+  'action.sizeLabel': '桌寵大小',
   'action.dress': '裝扮',
   'action.worlds': '我的 World',
   'action.hide': '先把我藏起來（系統匣裡可以叫我回來）',
@@ -74,6 +77,7 @@ export default {
   'dress.title': '桌寵裝扮',
   'dress.preview': '預覽',
   'dress.figure': '形象',
+  'dress.size': '大小',
   'dress.palette': '配色',
   'dress.head': '頭頂',
   'dress.side': '配件',
@@ -151,8 +155,6 @@ export default {
   'looks.delete': "刪除「{name}」",
   'looks.exists': "「{name}」已經收藏過",
   'looks.empty': "目前沒有已收藏的形象。",
-  'looks.readFailed': "讀取收藏失敗。",
-  'looks.retry': "重試",
   'looks.deleteTitle': "刪除收藏「{name}」？",
   'looks.deleteLead': "刪除後無法復原。",
   'looks.deleteGo': "刪除",

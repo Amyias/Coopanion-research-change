@@ -47,10 +47,12 @@ export const S: Partial<typeof en> = {
     }
   },
   figure: (kind: string, name: string, b: string): string => (kind === 'figure' ? `${b} を「${name}」に変更しました` : kind === 'dress' ? `${b} の着せ替えを変更しました` : `「${name}」を表示できなかったため、Coo に切り替えました`),
+  /** A figure's failure line with the reason its page gave. */
+  figureWhy: (line: string, reason: string): string => `${line}：${reason}`,
 };
 
 export const STEP: Partial<typeof stepEn> = {
   pet_cua_screenshot: 'スクリーンショット', pet_cua_click: 'クリック', pet_cua_move: 'マウス移動', pet_cua_drag: 'ドラッグ', pet_cua_mouse_down: 'マウスボタン押下', pet_cua_mouse_up: 'マウスボタン解放', pet_cua_scroll: 'スクロール', pet_cua_type: '入力',
   pet_cua_key: 'キー入力', pet_cua_windows: 'ウィンドウ一覧', pet_cua_focus: 'ウィンドウ切り替え', pet_cua_wait: '待機',
-  pet_move_to: '歩く', pet_act: '動作', pet_set: '設定を調整', pet_quiet: 'しばらく静かにする',
+  pet_move_to: '歩く', pet_act: '動作', pet_set: '設定を調整', pet_quiet: 'しばらく静かにする', pet_see_self: '姿を確認',
 };

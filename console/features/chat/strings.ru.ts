@@ -53,10 +53,12 @@ export const S: Partial<typeof en> = {
     }
   },
   figure: (kind: string, name: string, b: string): string => (kind === 'figure' ? `Вы заменили ${b} на ${name}` : kind === 'dress' ? `Вы сменили наряд ${b}` : `Не удалось показать ${name}; выбран Coo`),
+  /** A figure's failure line with the reason its page gave. */
+  figureWhy: (line: string, reason: string): string => `${line}: ${reason}`,
 };
 
 export const STEP: Partial<typeof stepEn> = {
   pet_cua_screenshot: 'Скриншот', pet_cua_click: 'Щелчок', pet_cua_move: 'Движение мыши', pet_cua_drag: 'Перетаскивание', pet_cua_mouse_down: 'Нажатие кнопки мыши', pet_cua_mouse_up: 'Отпускание кнопки мыши', pet_cua_scroll: 'Прокрутка', pet_cua_type: 'Ввод текста',
   pet_cua_key: 'Нажатие клавиш', pet_cua_windows: 'Список окон', pet_cua_focus: 'Переключение окна', pet_cua_wait: 'Ожидание',
-  pet_move_to: 'Прогулка', pet_act: 'Движение', pet_set: 'Настройка', pet_quiet: 'Тишина',
+  pet_move_to: 'Прогулка', pet_act: 'Движение', pet_set: 'Настройка', pet_quiet: 'Тишина', pet_see_self: 'Внешний вид',
 };

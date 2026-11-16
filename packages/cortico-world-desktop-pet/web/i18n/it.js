@@ -29,6 +29,7 @@ export default {
   // the status bubble
   'status.more': ' e altri {others}',
   'status.thinking': 'Sta pensando',
+  'status.seconds': '{seconds} s',
 
   // the menu and the hover buttons
   'roam.off': 'Resta sul posto',
@@ -47,6 +48,8 @@ export default {
   'action.themeLight': 'Modalità notte: disattivata · clicca per attivarla',
   'action.soundOn': 'Suoni: attivi · clicca per disattivarli',
   'action.soundOff': 'Suoni: disattivati · clicca per attivarli',
+  'action.size': 'Dimensione: {pct}%',
+  'action.sizeLabel': "Dimensione dell'animaletto",
   'action.dress': 'Guardaroba',
   'action.worlds': 'I miei World',
   'action.hide': "Nascondimi per ora (l'icona nell'area di notifica mi riporta qui)",
@@ -74,6 +77,7 @@ export default {
   'dress.title': 'Guardaroba',
   'dress.preview': 'Anteprima',
   'dress.figure': 'Personaggio',
+  'dress.size': 'Dimensione',
   'dress.palette': 'Colori',
   'dress.head': 'Testa',
   'dress.side': 'Accessorio',
@@ -151,8 +155,6 @@ export default {
   'looks.delete': "Elimina {name}",
   'looks.exists': "{name} è già tra i preferiti",
   'looks.empty': "Nessun look preferito.",
-  'looks.readFailed': "Impossibile leggere i look preferiti.",
-  'looks.retry': "Riprova",
   'looks.deleteTitle': "Rimuovere {name} dai preferiti?",
   'looks.deleteLead': "L'operazione non si può annullare.",
   'looks.deleteGo': "Elimina",

@@ -76,7 +76,8 @@ export interface PetServerOptions {
   onPetConnect(): void;
   onPetDisconnect(): void;
   /** A dressing page saved a skin. */
-  onSkin(skin: unknown): void;
+  /** `scale`: the size to put the look on at, when it is a saved look's. */
+  onSkin(skin: unknown, scale?: unknown): void;
   onPrefs(prefs: Record<string, unknown>): void;
   /** One picture a `say` message shows, by the token in that message; `GET /say-image/<token>` serves it and nothing else. */
   sayImage?(token: string): { bytes: Uint8Array; mime: string } | null;
@@ -369,7 +370,7 @@ export class PetServer {
       const body = await readBody(req);
       const msg = body ? parse(body) : null;
       if (!msg) return json(res, 400, { error: 'bad json' });
-      if (path === '/api/skin') this.opts.onSkin(msg.skin);
+      if (path === '/api/skin') this.opts.onSkin(msg.skin, msg.scale);
       else this.opts.onPrefs(msg);
       return json(res, 200, { ok: true });
     }

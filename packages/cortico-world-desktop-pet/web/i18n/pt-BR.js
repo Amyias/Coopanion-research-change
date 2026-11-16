@@ -29,6 +29,7 @@ export default {
   // the status bubble: added when the same kind of thing was done several times
   'status.more': ' e mais {others}',
   'status.thinking': 'Pensando',
+  'status.seconds': '{seconds} s',
 
   // the menu and the hover buttons
   'roam.off': 'Sem se mexer',
@@ -47,6 +48,8 @@ export default {
   'action.themeLight': 'Modo noturno: desligado · clique para ligar',
   'action.soundOn': 'Sons: ligados · clique para desligar',
   'action.soundOff': 'Sons: desligados · clique para ligar',
+  'action.size': 'Tamanho: {pct}%',
+  'action.sizeLabel': 'Tamanho do pet',
   'action.dress': 'Guarda-roupa',
   'action.worlds': 'Meus Worlds',
   'action.hide': 'Me esconda por enquanto (o ícone da bandeja me traz de volta)',
@@ -74,6 +77,7 @@ export default {
   'dress.title': 'Guarda-roupa',
   'dress.preview': 'Prévia',
   'dress.figure': 'Personagem',
+  'dress.size': 'Tamanho',
   'dress.palette': 'Cores',
   'dress.head': 'Cabeça',
   'dress.side': 'Acessório',
@@ -151,8 +155,6 @@ export default {
   'looks.delete': "Excluir {name}",
   'looks.exists': "{name} já está nos favoritos",
   'looks.empty': "Nenhum visual favorito ainda.",
-  'looks.readFailed': "Não foi possível ler os visuais favoritos.",
-  'looks.retry': "Tentar novamente",
   'looks.deleteTitle': "Remover {name} dos favoritos?",
   'looks.deleteLead': "Não é possível desfazer.",
   'looks.deleteGo': "Excluir",

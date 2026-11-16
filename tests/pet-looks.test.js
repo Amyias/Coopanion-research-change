@@ -45,6 +45,8 @@ async function page(stored) {
     let skin = normalizeSkin({ figure: 'coo', palette: 'purple' });
     const packs = [], theme = 'dark', body = null, sfx = { tick() {}, sparkle() {} }, importDialog = {};
     const cooName = (kind, id) => id, nameOf = (n) => n, apply = () => {};
+    let scale = 1;
+    const sizer = { set() {} }, showScale = () => {}, scaleHeard = { sent() {} };
     ${section}
     window.page = { loadLooks };
   `);
@@ -52,14 +54,16 @@ async function page(stored) {
   return {
     state, stored: () => kept, doc,
     load: () => win.page.loadLooks(),
+    /** Clicks save and resolves once the page shows the outcome: the button's saved mark, or a notice. */
     save: async () => {
-      const before = kept;
-      doc.querySelector('#saveLook').click();
-      await expect.poll(() => kept !== before || doc.querySelector('#saved').textContent !== '').toBe(true);
+      const button = doc.querySelector('#saveLook'), notice = doc.querySelector('#saved');
+      button.classList.remove('done');
+      notice.textContent = '';
+      button.click();
+      await expect.poll(() => button.classList.contains('done') || notice.textContent !== '').toBe(true);
     },
     tiles: () => doc.querySelectorAll('.look-tile').length,
     row: () => doc.querySelector('#optLooks').textContent,
-    retry: () => doc.querySelector('.looks-retry'),
     notice: () => doc.querySelector('#saved').textContent,
   };
 }
@@ -70,8 +74,6 @@ describe('saved looks on the dressing page', () => {
     const p = await page(stored);
     p.state.failReads = 2;
     await p.load();
-    expect(p.row()).toContain(t('looks.readFailed'));
-    expect(p.row()).not.toContain(t('looks.empty'));
     await p.save();
     expect(p.stored()).toBe(stored);
     expect(p.notice()).toBe(t('dress.notSaved'));
@@ -84,16 +86,8 @@ describe('saved looks on the dressing page', () => {
     await p.save();
     expect(p.stored().map((l) => l.id).slice(0, 2)).toEqual(['a', 'b']);
     expect(p.stored()).toHaveLength(3);
-    expect(p.tiles()).toBe(3);
-  });
-
-  it('shows the stored list after the retry button reads it', async () => {
-    const p = await page([look('a', 'mint')]);
-    p.state.failReads = 1;
-    await p.load();
-    p.retry().click();
-    await expect.poll(() => p.tiles()).toBe(1);
-    expect(p.retry()).toBeNull();
+    // the server keeps the list before its answer reaches the page, which then draws the tiles
+    await expect.poll(() => p.tiles()).toBe(3);
   });
 
   it('keeps the list it has when a later read fails', async () => {
@@ -110,6 +104,5 @@ describe('saved looks on the dressing page', () => {
     const p = await page([]);
     await p.load();
     expect(p.row()).toContain(t('looks.empty'));
-    expect(p.retry()).toBeNull();
   });
 });

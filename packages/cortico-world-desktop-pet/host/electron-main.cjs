@@ -28,6 +28,7 @@ const { createCursorSource } = require('./cursor.cjs');
 const { createInputShape } = require('./input-shape.cjs');
 const { createMouseLease, FORWARD_MOVES } = require('./mouse-lease.cjs');
 const { createOverlaySource } = require('./overlay.cjs');
+const { capturePortrait } = require('./portrait.cjs');
 const { createWindowSource, ledgesFrom, windowsFrom } = require('./windows.cjs');
 const { createAppStoreRule } = require('./app-store.cjs');
 
@@ -170,11 +171,11 @@ const OVERHANG_GAP = 3;
 
 /**
  * The part of display `d` the window covers: its work area, off the edge an auto-hidden taskbar waits on.
- * On Windows, over a taskbar at the bottom it reaches down past the work area by `below` DIP, so what a
- * figure draws under the floor (legs hanging over the edge while it sits) shows over the taskbar; the page
- * keeps the floor at the work area's bottom.
+ * On Windows with `overTaskbar`, over a taskbar at the bottom it reaches down past the work area by `below`
+ * DIP, so what a figure draws under the floor (legs hanging over the edge while it sits) shows over the
+ * taskbar; the page keeps the floor at the work area's bottom.
  */
-function coverArea(d) {
+function coverArea(d, overTaskbar) {
   let { x, y, width, height } = d.workArea;
   const b = d.bounds, edge = autoHideTaskbarEdge(), gap = AUTOHIDE_TASKBAR_GAP;
   // only where the work area reaches that edge of the display
@@ -183,7 +184,7 @@ function coverArea(d) {
   if (edge === 'right' && x + width === b.x + b.width) width -= gap;
   if (edge === 'bottom' && y + height === b.y + b.height) height -= gap;
   const strip = b.y + b.height - (y + height);
-  const below = process.platform === 'win32' ? Math.max(0, strip - OVERHANG_GAP) : 0;
+  const below = overTaskbar && process.platform === 'win32' ? Math.max(0, strip - OVERHANG_GAP) : 0;
   return { x, y, width, height: height + below, below };
 }
 
@@ -344,6 +345,8 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   let displayId = null;
   /** The settings, and whether the first is what hid the window. */
   let hideWhenFullscreen = false, autoHidden = false, passWhenFullscreen = false;
+  /** The setting: the window reaches down over a taskbar at the bottom (see coverArea). */
+  let overTaskbar = true;
   /** Every click passes through while the tray says so or the second setting meets a fullscreen window. */
   let trayThrough = false, fullscreenThrough = false;
   const lockMouse = () => mouse.lock(trayThrough || fullscreenThrough);
@@ -356,7 +359,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     const rects = windows.list(hwndOf(win));
     const b = win.getBounds();
     // the page's floor: 2 DIP above the bottom of the work area (web/pet-app.js floorGap)
-    const origin = { x: b.x, y: b.y }, view = { width: b.width, floor: b.height - 2 - coverArea(display()).below };
+    const origin = { x: b.x, y: b.y }, view = { width: b.width, floor: b.height - 2 - coverArea(display(), overTaskbar).below };
     const desk = rects && { ledges: ledgesFrom(rects, origin, view), windows: windowsFrom(rects, origin, view) };
     const json = JSON.stringify(desk);
     if (json === sentWindows) return;
@@ -377,7 +380,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   const cover = (d) => {
     const from = screen.getDisplayMatching(win.getBounds());
     displayId = d.id;
-    const area = coverArea(d), { below, ...rect } = area;
+    const area = coverArea(d, overTaskbar), { below, ...rect } = area;
     // Windows: setBounds converts the rect with the scale of the display the window is on. Onto a
     // display with another scale the window comes out sized for the old one, can reach back over it
     // and stay counted on it, so setting the rect again changes nothing. A 1x1 window at the new
@@ -400,7 +403,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   const releaseAutoHidden = () => { autoHidden = false; };
 
   const create = () => {
-    const d = display(), wa = coverArea(d);
+    const d = display(), wa = coverArea(d, overTaskbar);
     win = new BrowserWindow({
       x: wa.x, y: wa.y, width: wa.width, height: wa.height,
       transparent: true, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false,
@@ -439,7 +442,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     });
     // a page loaded afresh asks for the windows again once its body is on
     win.webContents.on('did-finish-load', () => {
-      win.webContents.setZoomLevel(0); overlay.pageLoaded(); watchWindows(false); win.webContents.send('pet:floor', coverArea(display()).below);
+      win.webContents.setZoomLevel(0); overlay.pageLoaded(); watchWindows(false); win.webContents.send('pet:floor', coverArea(display(), overTaskbar).below);
       win.webContents.send('pet:fullscreenThrough', fullscreenThrough);
       if (shape) win.webContents.send('pet:inputShape', true);
     });
@@ -523,6 +526,9 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   onPet('pet:overlayFrame', (_e, rect, at) => overlay.frame(rect, at));
   onPet('pet:hideWhenFullscreen', (_e, on) => { hideWhenFullscreen = !!on; });
   onPet('pet:passWhenFullscreen', (_e, on) => { passWhenFullscreen = !!on; });
+  onPet('pet:overTaskbar', (_e, on) => { if (overTaskbar !== !!on) { overTaskbar = !!on; place(); } });
+  // Windows: WDA_EXCLUDEFROMCAPTURE, which leaves the window out of what other programs capture of the screen
+  onPet('pet:hideFromCapture', (_e, on) => win.setContentProtection(!!on));
   onPet('pet:clickThrough', (_e, on) => { trayThrough = !!on; lockMouse(); });
   onPet('pet:watchWindows', (_e, on) => watchWindows(!!on));
   onPet('pet:openDress', () => openDress());
@@ -535,6 +541,10 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   handlePet('pet:sampleBackdrop', (_e, query) => {
     try { return win ? sampleBackdrop(win, query || {}) : []; } catch { return []; }
   });
+  // a hidden window is not drawn: there is nothing to take a picture of
+  handlePet('pet:portrait', async (_e, rect) => {
+    try { return win && win.isVisible() ? await capturePortrait(win, rect, nativeImage) : null; } catch { return null; }
+  });
   /**
    * A drag carried or let go of outside the window: when the cursor is over another display, the
    * window moves there and the page gets the cursor's spot in its new coordinates, its new size, and
@@ -545,7 +555,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     const pt = cursor.read(), d = screen.getDisplayNearestPoint(pt);
     const fromDisplay = display();
     if (d.id === fromDisplay.id) return null;
-    const from = coverArea(fromDisplay), wa = cover(d);
+    const from = coverArea(fromDisplay, overTaskbar), wa = cover(d);
     return { x: pt.x - wa.x, y: pt.y - wa.y, w: wa.width, h: wa.height, dx: from.x - wa.x, dy: from.y - wa.y };
   });
 

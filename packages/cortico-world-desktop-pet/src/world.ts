@@ -32,7 +32,7 @@ import type { Language } from 'cortico/core/language.ts';
 import type { DeepPartial } from 'cortico/world.ts';
 import {
   DESKTOP_PET_ID, MAX_HOVER_BUTTONS, MAX_LOOK_NAME, MAX_SAVED_LOOKS, PET_ACTIONS, SELF_KEYS, THRESHOLD_DB_MAX, THRESHOLD_DB_MIN, TOUCH_KINDS, USER_MAX, asrEngineFor,
-  desktopPetConfigGroups, directSettings, hoverButtonList, selfAdjustMode, speechFor, touchWakes,
+  desktopPetConfigGroups, directSettings, hoverButtonList, scaleOf, selfAdjustMode, speechFor, touchWakes,
   type AsrEngine, type DesktopPetConfigSection, type MicMode, type PetSkin, type PetTheme, type SavedLook, type RoamMode, type SelfKey,
 } from './config.ts';
 import { capFor, cutChars, petText, type PetText } from './i18n/index.ts';
@@ -52,14 +52,14 @@ import { toSimplified } from './asr/simplify.ts';
 import { estimateSeconds, parseActions, parseScript, vocabChange, vocabTable, type VocabWord } from './script.ts';
 import { ActivityGroup, ChatSockets, SELF_TYPE, chatHistory, chatItem, chatRefs, type ChatFigure } from './chat.ts';
 import { ASK_OPTION_MAX, petToolDecls } from './tools.ts';
-import { COO, figurePacks, lookOf, modelName, nameIn, packFor, type FigurePack, type MoveTarget, type PackScan } from './packs.ts';
+import { COO, figurePacks, lookOf, modelName, nameIn, packFor, type FigurePack, type MoveTarget, type PackProblem, type PackScan } from './packs.ts';
 import { moveChange, moveTable, readMove } from './moves.ts';
 import { Cua } from './cua/cua.ts';
 import { CUA_OFF_TOOL_DECLS } from './cua/tools.ts';
 import type { Answer } from './cua/engine-ipc.ts';
 import { PackImporter } from './pack-import.ts';
-import { dressTable, planSettings, type SettingChange } from './self.ts';
-import { MODEL_TEXT, type ModelLanguage, type ModelText } from './model-text.ts';
+import { dressTable, planSettings, sayScale, type SettingChange } from './self.ts';
+import { MODEL_TEXT, type ModelLanguage, type ModelText, type NoPortrait } from './model-text.ts';
 
 /** The console panels, titled in `language`. */
 function desktopPetPanelDecls(language: Language = 'zh'): WorldPanelDecl[] {
@@ -87,6 +87,12 @@ const ENV_PROMPT_FILES: Record<ModelLanguage, string> = {
 const QUIET_MAX_MIN = 24 * 60;
 const FRAME_MS = 20;
 const WALK_TIMEOUT_MS = 30_000;
+/**
+ * How long `pet_see_self` waits for the pet page's picture. The page waits up to 400 ms for its frame and the
+ * display's (web/pet-app.js), the window takes about 50 ms to copy a frame (host/overlay.cjs) and less than that
+ * to encode a picture of at most a megapixel: ten times the sum.
+ */
+const PORTRAIT_TIMEOUT_MS = 5000;
 /** Touches of one kind closer than this are reported as one event with a count. */
 const TOUCH_MERGE_MS = 2500;
 /** How long a confirmation bubble waits for an answer, counted from when the page shows it. */
@@ -173,6 +179,9 @@ export interface PetDialog {
  *   after the `icon` of that name. `more` is a last card that,
  *   clicked, unfolds its `options` after the others in place; the answer's index counts on through them, and a `value`
  *   among them shows them from the start.
+ * - `pick`: cards like `choices`, any number of them picked, from `min` (1 when absent) to `max`, answered with
+ *   the indices picked (`picked`), in the cards' order; `value` are the ones picked from the start. How many are picked
+ *   shows beside the confirm button, which waits for `min`.
  * - `text`: a text box answered with the text; `secret` hides what is typed, `suggestions` are offered
  *   as the person types, `link` opens a page in the browser, `alt` is a second way out, answered as `{ alt: true }`.
  * - `progress`: a bar the app moves with `update({ progress })`; it ends when the app closes it.
@@ -180,6 +189,7 @@ export interface PetDialog {
 export type PetDialogInput =
   | { kind: 'buttons'; options: Array<{ label: string; primary?: boolean; hover?: string }>; keys?: string; taps?: number }
   | { kind: 'choices'; options: PetDialogChoice[]; more?: { label: string; icon?: string; image?: string; options: PetDialogChoice[] }; value?: number; confirm: string; list?: boolean; hint?: { text: string; mark: string; icon: string } }
+  | { kind: 'pick'; options: PetDialogChoice[]; value?: number[]; min?: number; max: number; confirm: string }
   | { kind: 'text'; submit: string; placeholder?: string; value?: string; secret?: boolean; maxLength?: number; suggestions?: string[]; link?: { label: string; url: string }; alt?: string }
   | { kind: 'progress'; label?: string };
 export type PetDialogChoice = {
@@ -188,12 +198,12 @@ export type PetDialogChoice = {
 };
 
 /**
- * How a step ended: a button or card (`index`), typed text, the text box's `alt`, the close
+ * How a step ended: a button or card (`index`), the cards of a `pick` (`picked`), typed text, the text box's `alt`, the close
  * button, the back button, the line read to the end with nothing to answer (`done`, also a progress step the app
  * closed), or no pet page to show it on.
  */
 export type PetDialogAnswer =
-  | { index: number } | { text: string } | { alt: true } | { closed: true } | { back: true } | { done: true } | { unavailable: true };
+  | { index: number } | { picked: number[] } | { text: string } | { alt: true } | { closed: true } | { back: true } | { done: true } | { unavailable: true };
 
 /** What the app changes on a step while it is up: the line, and a progress step's bar (0–1, or null while there is no telling). */
 export interface PetDialogUpdate {
@@ -274,6 +284,11 @@ interface PendingWalk {
   /** The call's interrupt asked the page to stop the walk. */
   stopping?: boolean;
 }
+
+/** What the pet page answered a `portrait` order with: the PNG and its size in pixels, or why there is none. */
+type Portrait = { png: Buffer; width: number; height: number } | NoPortrait;
+/** The reasons the page itself gives. */
+const PAGE_NO_PORTRAIT: readonly string[] = ['tab', 'hidden', 'no-body', 'capture'] satisfies NoPortrait[];
 
 interface PendingAsk {
   id: string;
@@ -385,8 +400,11 @@ export class DesktopPetWorld implements World {
   private petHidden = false;
   /** `onDesktop` as last told to `onDesktopChange`, null before the first time. */
   private desktopTold: boolean | null = null;
-  private busyUntil = 0;
+  /** When each line sent by `pet_say` is estimated to be over, in sending order; the last one is when the bubble is free. */
+  private sayEnds: Array<{ id: string; at: number }> = [];
   private readonly walks = new Map<string, PendingWalk>();
+  /** The `portrait` orders the page has not answered, by id. */
+  private readonly portraits = new Map<string, (portrait: Portrait) => void>();
   private ask: PendingAsk | null = null;
   private touch: TouchBatch | null = null;
   /** A touch has woken the bot and no turn has ended since; touches until then wait for the next wake. */
@@ -450,6 +468,7 @@ export class DesktopPetWorld implements World {
 
   constructor(private readonly opts: DesktopPetWorldOptions) {
     this.cfg = opts.cfg;
+    this.sized = { figure: this.cfg.skin.figure ?? COO, scale: this.cfg.window.scale };
     this.cua = new Cua({
       cfg: () => this.cfg.cua,
       botName: opts.botName,
@@ -476,13 +495,13 @@ export class DesktopPetWorld implements World {
       onAudio: (frame) => this.onAudio(frame),
       onPetConnect: () => { this.petHidden = false; this.bodyMissing = null; this.log?.info('桌宠页面已连接'); this.tellDesktop(); },
       onPetDisconnect: () => this.onPageGone(),
-      onSkin: (skin) => this.saveSkin(skin),
+      onSkin: (skin, scale) => this.saveSkin(skin, scale),
       onPrefs: (prefs) => this.savePrefs(prefs),
    sayImage: (token) => this.sayImage(token),
       looks: () => this.cfg.looks,
       onLooks: (looks) => this.saveLooks(looks),
       packs: () => this.packs(),
-      packProblems: () => this.packScan().problems,
+      packProblems: () => this.packProblemsNow(),
       importer: this.importer ?? undefined,
       language: () => this.appLanguage,
       text: () => this.ui,
@@ -499,6 +518,8 @@ export class DesktopPetWorld implements World {
   private figureShown: string | null = null;
   /** The figure the page said would not run, while the skin still names it: the page shows Coo meanwhile. */
   private figureFailed: string | null = null;
+  /** Why each pack would not run when the pet page last loaded it, by pack id; a pack leaves when the page shows it. */
+  private readonly runFailures = new Map<string, string>();
   /** Why Coo, the last stand-in, would not run on the connected page, which then shows no figure at all. */
   private bodyMissing: string | null = null;
   /** The words each pack's body said it knows when the page last loaded it; a body that did not say is taken at its manifest's word. */
@@ -509,6 +530,8 @@ export class DesktopPetWorld implements World {
   private toldMoves: readonly MoveTarget[] = [];
   /** A look the bot put on itself: the pet page's report of it is not told back (the receipt said it). */
   private botLook: string | null = null;
+  /** The figure on screen and its size as `followFigure` last saw them. */
+  private sized: { figure: string; scale: number };
   /** `pet_quiet` in force: what it overrides, until when, and the settings it found (a change to them ends it). */
   private quiet: { sound: boolean; roam: RoamMode; until: number; base: { sound: boolean; roam: RoamMode }; timer: NodeJS.Timeout } | null = null;
 
@@ -525,6 +548,12 @@ export class DesktopPetWorld implements World {
       if (!this.packProblems.has(line)) { this.packProblems.add(line); this.log?.warn(line); }
     }
     return scan;
+  }
+
+  /** What the scan found wrong, then the packs that scanned well and would not run on the pet page. */
+  private packProblemsNow(): PackProblem[] {
+    const { packs, problems } = this.packScan();
+    return [...problems, ...packs.flatMap((p) => { const reason = this.runFailures.get(p.id); return reason === undefined ? [] : [{ dir: p.dir, reason, loaded: false }]; })];
   }
 
   /** The pack of the figure the skin asks for (Coo for one that is not installed); null only when even Coo's would not load. */
@@ -621,13 +650,15 @@ export class DesktopPetWorld implements World {
       this.figureShown = COO;
       this.figureFailed = id;
       const reason = typeof msg.reason === 'string' ? msg.reason.slice(0, 200) : this.t.reasonUnknown;
+      this.runFailures.set(id, reason);
+      this.log?.warn(`形象包 ${id} 没能显示:${reason}`);
       if (id === COO) this.bodyMissing = reason;
       // the page shows Coo instead, whose words then hold too
       const coo = packs.find((p) => p.id === COO) ?? null;
       const note = this.vocabNote();
       const name = modelName(pack?.manifest.name, id, this.language);
       void this.push('desktop-pet.figure', 'desktop-pet.figure', this.t.figureFailed(name, reason, this.bodyText(coo), note), 'flush',
-        { meta: { figure: { kind: 'failed', name: { ...pack?.manifest.name, id } } } });
+        { meta: { figure: { kind: 'failed', name: { ...pack?.manifest.name, id }, reason } } });
       return;
     }
     if ('words' in msg) {
@@ -638,6 +669,7 @@ export class DesktopPetWorld implements World {
     const unknown = pack && known ? pack.manifest.vocab.filter((w) => !known.has(w.id)).map((w) => w.id) : [];
     const problem = `形象包 ${id} 的词表里有身体不认得的词,没给 bot 用:${unknown.join('、')}`;
     if (unknown.length && !this.packProblems.has(problem)) { this.packProblems.add(problem); this.log?.warn(problem); }
+    this.runFailures.delete(id);
     if (id === this.cfg.skin.figure) this.figureFailed = null;
     this.bodyMissing = null;
     const shown = id === COO ? COO : `${id}:${typeof msg.scheme === 'string' ? msg.scheme : ''}`;
@@ -734,6 +766,7 @@ export class DesktopPetWorld implements World {
     this.dialogs.clear();
     for (const w of this.walks.values()) { clearTimeout(w.timer); w.resolve(this.t.walkWorldStopped); }
     this.walks.clear();
+    for (const done of [...this.portraits.values()]) done('gone');
     for (const s of this.voiceSockets) s.close('stopped');
     this.voiceSockets.clear();
     this.chat.closeAll('stopped');
@@ -940,6 +973,8 @@ export class DesktopPetWorld implements World {
       lockFrameRate: this.cfg.window.lockFrameRate,
       hideWhenFullscreen: this.cfg.window.hideWhenFullscreen,
       passWhenFullscreen: this.cfg.window.passWhenFullscreen,
+      overTaskbar: this.cfg.window.overTaskbar,
+      hideFromCapture: this.cfg.window.hideFromCapture,
       clickThrough: this.clickThrough,
       language: this.appLanguage,
       user: this.userName,
@@ -984,6 +1019,7 @@ export class DesktopPetWorld implements World {
 
   /** Config is a live object edited by the console; changes reach the pages within PREFS_SYNC_MS. */
   private syncPrefs(): void {
+    this.followFigure();
     this.segmenter.configure(this.segmentConfig());
     if (!this.holdPreRollEnabled()) this.holdPreRoll.length = 0;
     const turnedOn = this.cfg.asr.enabled && !this.voiceEnabled;
@@ -1056,11 +1092,30 @@ export class DesktopPetWorld implements World {
     };
   }
 
-  private saveSkin(raw: unknown): void {
+  /** Puts on `raw`; with `scale` (a saved look's) at that size, else at the size the figure last had (`followFigure`). */
+  private saveSkin(raw: unknown, scale?: unknown): void {
     if (!raw || typeof raw !== 'object') return;
+    // a size set elsewhere since the last sync (the settings window) belongs to the figure on screen, not to this one
+    this.followFigure();
     const skin = raw as PetSkin;
-    this.opts.persist({ skin });
+    const size = scaleOf(scale);
+    this.opts.persist(size === null ? { skin } : { skin, window: { scale: size } });
+    this.followFigure(size !== null);
     this.syncPrefs();
+  }
+
+  /**
+   * Each figure keeps its own size: when the figure on screen changes, the one replaced keeps the size it had in
+   * `figureScales`, and the new one takes its own back from there, unless the size changed along with it or was
+   * `given` with it (a saved look's, or `pet_set`'s, the size on screen included).
+   */
+  private followFigure(given = false): void {
+    const figure = this.cfg.skin.figure ?? COO, scale = this.cfg.window.scale;
+    const was = this.sized;
+    if (figure === was.figure) { was.scale = scale; return; }
+    const own = !given && scale === was.scale ? scaleOf(this.cfg.figureScales[figure]) : null;
+    this.opts.persist({ figureScales: { [was.figure]: was.scale }, ...(own !== null && own !== scale ? { window: { scale: own } } : {}) });
+    this.sized = { figure, scale: own ?? scale };
   }
 
   /** Keeps the entries that have an id, a name and a skin; names are trimmed to MAX_LOOK_NAME (an empty one becomes the id), the list to MAX_SAVED_LOOKS. */
@@ -1070,10 +1125,11 @@ export class DesktopPetWorld implements World {
     const looks: SavedLook[] = [];
     for (const l of raw) {
       if (!l || typeof l !== 'object') continue;
-      const { id, name, skin } = l as Record<string, unknown>;
+      const { id, name, skin, scale } = l as Record<string, unknown>;
       if (typeof id !== 'string' || !id || seen.has(id) || typeof name !== 'string' || !skin || typeof skin !== 'object') continue;
       seen.add(id);
-      looks.push({ id, name: name.trim().slice(0, MAX_LOOK_NAME) || id, skin: skin as PetSkin });
+      const size = scaleOf(scale);
+      looks.push({ id, name: name.trim().slice(0, MAX_LOOK_NAME) || id, skin: skin as PetSkin, ...(size === null ? {} : { scale: size }) });
       if (looks.length === MAX_SAVED_LOOKS) break;
     }
     this.opts.persist({ looks });
@@ -1086,6 +1142,8 @@ export class DesktopPetWorld implements World {
     // the menu's sound or roam button during a quiet: the person's choice, kept, and the quiet is over
     if (this.quiet && (patch.roam !== undefined || patch.sound !== undefined)) this.endQuiet();
     if (prefs.theme === 'dark' || prefs.theme === 'light') patch.theme = prefs.theme as PetTheme;
+    const scale = scaleOf(prefs.scale);
+    if (scale !== null) patch.window = { scale };
     if (typeof prefs.mic === 'boolean') patch.asr = { enabled: prefs.mic };
     if (Array.isArray(prefs.hoverButtons)) {
       const ids = prefs.hoverButtons.filter((id): id is string => typeof id === 'string' && (PET_ACTIONS as readonly string[]).includes(id));
@@ -1148,6 +1206,13 @@ export class DesktopPetWorld implements World {
         return;
       }
       case 'answer': return this.onAnswer(msg, 'pet');
+      case 'portrait': {
+        const png = typeof msg.png === 'string' ? Buffer.from(msg.png, 'base64') : null;
+        const sized = [msg.width, msg.height].every((n) => typeof n === 'number' && n > 0);
+        this.portraits.get(String(msg.id))?.(png?.length && sized ? { png, width: msg.width as number, height: msg.height as number }
+          : PAGE_NO_PORTRAIT.includes(String(msg.failed)) ? msg.failed as NoPortrait : 'capture');
+        return;
+      }
       case 'visibility': this.petHidden = msg.hidden === true; this.tellDesktop(); return;
       case 'text': {
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 500) : '';
@@ -1213,12 +1278,21 @@ export class DesktopPetWorld implements World {
         if (!settle) return;
         this.dialogs.delete(String(msg.id));
         settle(typeof msg.index === 'number' ? { index: msg.index }
+          : Array.isArray(msg.picked) ? { picked: [...new Set(msg.picked.filter((i): i is number => Number.isInteger(i) && i >= 0))].sort((a, b) => a - b) }
           : typeof msg.text === 'string' ? { text: msg.text.slice(0, 2000) }
           : msg.alt ? { alt: true } : msg.closed ? { closed: true } : msg.back ? { back: true } : { done: true });
         return;
       }
       case 'commit': return this.commitSpeech();
       case 'cancel': return this.cancelSpeech();
+      case 'skipped': {
+        // the person ended a line early: the lines after it start now rather than when it was estimated to end
+        const i = this.sayEnds.findIndex((l) => l.id === String(msg.id));
+        if (i < 0) return;
+        const shift = Date.now() - this.sayEnds[i]!.at;
+        this.sayEnds = this.sayEnds.slice(i + 1).map((l) => ({ ...l, at: l.at + shift }));
+        return;
+      }
     }
   }
 
@@ -1273,7 +1347,8 @@ export class DesktopPetWorld implements World {
     let settle: (a: PetDialogAnswer) => void = () => {};
     const answer = new Promise<PetDialogAnswer>((resolve) => { settle = resolve; });
     if (!this.server.sendPet({ t: 'dialog', id, ...d, input, actions })) settle({ unavailable: true });
-    else this.dialogs.set(id, settle);
+    // a pick is answered with indices of its own cards
+    else this.dialogs.set(id, input?.kind === 'pick' ? (a) => settle('picked' in a ? { picked: a.picked.filter((i) => i < input.options.length) } : a) : settle);
     // a page that never reports back (a tab put to sleep) does not hold a line with nothing to answer forever
     if (!d.input && this.dialogs.has(id)) {
       const timer = setTimeout(() => this.dialogs.get(id)?.({ done: true }), 5000 + d.text.length / DIALOG_CPS * 1000);
@@ -1310,6 +1385,7 @@ export class DesktopPetWorld implements World {
     this.tellDesktop();
     for (const [id, d] of this.dialogs) { d({ unavailable: true }); this.dialogs.delete(id); }
     for (const [id, w] of this.walks) { clearTimeout(w.timer); w.resolve(this.t.walkWindowGone); this.walks.delete(id); }
+    for (const done of [...this.portraits.values()]) done('gone');
     for (const [id, c] of this.confirms) { clearTimeout(c.timer); c.resolve('unavailable'); this.confirms.delete(id); }
     this.segmenter.flush();
     if (this.wasSpeaking) this.wasSpeaking = false;
@@ -1854,6 +1930,7 @@ export class DesktopPetWorld implements World {
       pet_ask: (args) => this.askUser(args),
       pet_move_to: (args, ctx) => this.moveTo(args, ctx),
       pet_act: (args) => this.act(args),
+      pet_see_self: () => this.seeSelf(),
       pet_set: (args) => this.setSettings(args),
       pet_quiet: (args) => this.setQuiet(args),
       pet_cua_open_settings: async () => this.openCuaSettings(),
@@ -1876,18 +1953,21 @@ export class DesktopPetWorld implements World {
     const { beats, dropped } = parseScript(script, this.vocab());
     const spoken = beats.some((b) => b.text || b.actions.length || b.anchors.length);
     if (!spoken && shown.blobs.length === 0) return { text: this.t.sayEmpty, failed: true };
+    const id = nextId('s');
     // pictures reach the bubble too, and the chat page keeps them whether or not a window is attached
     const images = this.rememberSayImages(shown.blobs);
     const sent = (spoken || images.length > 0)
-      && this.server.sendPet({ t: 'say', id: nextId('s'), beats, ...(images.length ? { images } : {}) });
+      && this.server.sendPet({ t: 'say', id, beats, ...(images.length ? { images } : {}) });
     if (spoken && !sent) return this.notConnected('pet_say');
     void this.closeActivity();
     void this.record({ kind: 'say', beats: beats.map((b) => ({ text: b.text, ...moodOf(b.actions, this.vocab()) })) }, beats.map((b) => b.text).join(''), shown.blobs);
     if (!spoken) return { text: this.t.imagesShown(shown.blobs.length, this.chat.size > 0) };
     const now = Date.now();
     const selfSec = estimateSeconds(beats, this.cfg.window.bubbleSpeed, this.cfg.speech.enabled ? speechTextSteps : undefined);
-    const waitSec = Math.max(0, (this.busyUntil - now) / 1000);
-    this.busyUntil = Math.max(now, this.busyUntil) + selfSec * 1000;
+    this.sayEnds = this.sayEnds.filter((l) => l.at > now);
+    const free = this.sayEnds.at(-1)?.at ?? now;
+    const waitSec = (free - now) / 1000;
+    this.sayEnds.push({ id, at: free + selfSec * 1000 });
     const replaced = this.ask?.question ?? null;
     if (this.ask) this.setAsk(null);
     return { text: this.t.sayReceipt({ waitSec, selfSec, chatOpen: this.chat.size > 0, replaced, dropped, images: shown.blobs.length }) };
@@ -1995,21 +2075,30 @@ export class DesktopPetWorld implements World {
     const t = this.t;
     if (selfAdjustMode(this.cfg.selfAdjust) === 'off') return { text: t.selfAdjustOff('pet_set', this.userName), failed: true };
     const packs = this.packs();
-    const { changes, errors } = planSettings(args, { ...this.cfg, user: this.userName }, packs, this.language, capFor(USER_MAX, this.appLanguage), this.appLanguage);
+    const plan = (a: Record<string, unknown>) => planSettings(a, { ...this.cfg, user: this.userName }, packs, this.language, capFor(USER_MAX, this.appLanguage), this.appLanguage);
+    const { changes, errors } = plan(args);
     if (errors.length) return { text: t.setErrors(errors), failed: true };
     if (!changes.length) return { text: t.setNothing };
     const lines: string[] = [];
-    const apply = (list: SettingChange[]) => {
+    /** Applies `list`; when a figure put on takes back the size it last had, that change is said too. */
+    const apply = (list: SettingChange[]): string[] => {
+      this.followFigure();
+      const before = this.cfg.window.scale;
+      const given = list.some((c) => c.key === 'scale') || scaleOf(args.scale) === before;
       for (const c of list) this.opts.persist(c.patch);
+      this.followFigure(given);
       const skin = this.cfg.skin;
       if (list.some((c) => c.key === 'figure' || c.key === 'scheme')) this.botLook = (skin.figure ?? COO) === COO ? COO : `${skin.figure}:${skin.scheme ?? ''}`;
       this.syncPrefs();
       this.opts.onBotChange?.();
+      const after = this.cfg.window.scale;
+      return !given && after !== before ? [sayScale(before, after, this.language)] : [];
     };
     const says = (list: SettingChange[]) => list.map((c) => c.say);
     const mine = changes.filter((c) => c.tier === 'self');
-    if (mine.length) { apply(mine); lines.push(t.setDone(says(mine))); }
-    const asked = changes.filter((c) => c.tier === 'ask');
+    if (mine.length) { const also = apply(mine); lines.push(t.setDone([...says(mine), ...also])); }
+    // a figure put on above may have taken back its own size: a size still to be asked for is measured from the one on screen now
+    const asked = changes.filter((c) => c.tier === 'ask').flatMap((c) => (c.key === 'scale' && mine.length ? plan({ scale: args.scale }).changes : [c]));
     if (asked.length) {
       const c = this.ui.consent;
       const answer = await this.confirm(c.question(asked.map((x) => x.show)), c.choices);
@@ -2017,9 +2106,9 @@ export class DesktopPetWorld implements World {
         // these items stop being asked: the rest stay as they were, under `custom`; told to the app with the changes as the bot's own
         const keys = [...new Set(asked.map((x) => x.key))];
         this.opts.persist({ selfAdjust: 'custom', selfAdjustCustom: { ...directSettings(this.cfg), ...Object.fromEntries(keys.map((k) => [k, true])) } });
-        apply(asked);
-        lines.push(t.setAlways(this.userName, says(asked), keys.map((k) => t.settingNames[k])));
-      } else if (answer === 'yes') { apply(asked); lines.push(t.setAgreed(this.userName, says(asked))); }
+        const also = apply(asked);
+        lines.push(t.setAlways(this.userName, [...says(asked), ...also], keys.map((k) => t.settingNames[k])));
+      } else if (answer === 'yes') { const also = apply(asked); lines.push(t.setAgreed(this.userName, [...says(asked), ...also])); }
       else lines.push(t.setNotChanged(answer === 'unavailable' || answer === 'timeout' ? answer : 'no', this.userName, says(asked)));
     }
     if (mine.some((c) => c.key === 'figure' || c.key === 'scheme')) {
@@ -2065,6 +2154,32 @@ export class DesktopPetWorld implements World {
     if (!this.server.sendPet({ t: 'act', id: nextId('c'), actions })) return this.notConnected('pet_act');
     const lasting = actions.filter((a) => vocab.find((v) => v.id === a)?.lasting);
     return { text: this.t.actReceipt(actions, lasting, dropped) };
+  }
+
+  /**
+   * The picture is the pet window's: the page names the body's room and the window process copies it from what it
+   * draws (host/portrait.cjs). A browser tab has no such window and is not asked.
+   */
+  private async seeSelf(): Promise<ToolOutcome> {
+    const t = this.t;
+    if (!this.server.petConnected) return this.notConnected('pet_see_self');
+    const id = nextId('p');
+    const portrait = !this.server.petInWindow ? 'tab' : await new Promise<Portrait>((resolve) => {
+      const done = (p: Portrait): void => {
+        clearTimeout(timer);
+        this.portraits.delete(id);
+        resolve(p);
+      };
+      const timer = setTimeout(() => done('timeout'), PORTRAIT_TIMEOUT_MS);
+      this.portraits.set(id, done);
+      this.server.sendPet({ t: 'portrait', id });
+    });
+    if (typeof portrait === 'string') return { text: t.selfNot(portrait, PORTRAIT_TIMEOUT_MS / 1000), failed: true };
+    const { png, width, height } = portrait;
+    return {
+      text: t.selfSeen(width, height, this.bodyText(this.currentPack())),
+      blobs: [{ bytes: png, mime: 'image/png', name: 'self.png', fallbackText: t.selfFallback(width, height) }],
+    };
   }
 
   /* ---------- prompt ---------- */

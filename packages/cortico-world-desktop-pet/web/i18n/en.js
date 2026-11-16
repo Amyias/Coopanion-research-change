@@ -34,6 +34,7 @@ export default {
   // the status bubble: added when the same kind of thing was done several times
   'status.more': ' and {others} more',
   'status.thinking': 'Thinking',
+  'status.seconds': '{seconds} s',
 
   // the menu and the hover buttons
   'roam.off': 'Stay put',
@@ -52,6 +53,8 @@ export default {
   'action.themeLight': 'Night mode: off · click to turn on',
   'action.soundOn': 'Sounds: on · click to turn off',
   'action.soundOff': 'Sounds: off · click to turn on',
+  'action.size': 'Size: {pct}%',
+  'action.sizeLabel': 'Pet size',
   'action.dress': 'Dress up',
   'action.worlds': 'My Worlds',
   'action.hide': 'Hide the pet (show Coo again from the tray icon)',
@@ -79,6 +82,7 @@ export default {
   'dress.title': 'Dress up',
   'dress.preview': 'Preview',
   'dress.figure': 'Figure',
+  'dress.size': 'Size',
   'dress.palette': 'Colours',
   'dress.head': 'Head',
   'dress.side': 'Accessory',
@@ -158,8 +162,6 @@ export default {
   'looks.delete': "Delete {name}",
   'looks.exists': "{name} is already a favourite",
   'looks.empty': "No favourite looks yet.",
-  'looks.readFailed': "Couldn't read your favourite looks.",
-  'looks.retry': "Try again",
   'looks.deleteTitle': "Remove {name} from favourites?",
   'looks.deleteLead': "This cannot be undone.",
   'looks.deleteGo': "Delete",

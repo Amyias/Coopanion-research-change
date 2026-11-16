@@ -29,6 +29,7 @@ export default {
   // the status bubble
   'status.more': ' ほか {others} 件',
   'status.thinking': '考え中',
+  'status.seconds': '{seconds} 秒',
 
   // the menu and the hover buttons
   'roam.off': 'じっとする',
@@ -47,6 +48,8 @@ export default {
   'action.themeLight': 'ナイトモード：オフ · クリックでオン',
   'action.soundOn': 'サウンド：オン · クリックでオフ',
   'action.soundOff': 'サウンド：オフ · クリックでオン',
+  'action.size': 'サイズ：{pct}%',
+  'action.sizeLabel': 'ペットのサイズ',
   'action.dress': '着せ替え',
   'action.worlds': '自分の World',
   'action.hide': 'しばらく隠れる（トレイアイコンで呼び戻せます）',
@@ -74,6 +77,7 @@ export default {
   'dress.title': '着せ替え',
   'dress.preview': 'プレビュー',
   'dress.figure': 'アバター',
+  'dress.size': 'サイズ',
   'dress.palette': '配色',
   'dress.head': '頭',
   'dress.side': 'アクセサリー',
@@ -151,8 +155,6 @@ export default {
   'looks.delete': "「{name}」を削除",
   'looks.exists': "「{name}」はお気に入り済みです",
   'looks.empty': "お気に入りの姿はまだありません。",
-  'looks.readFailed': "お気に入りの姿を読み込めませんでした。",
-  'looks.retry': "再試行",
   'looks.deleteTitle': "「{name}」をお気に入りから削除しますか？",
   'looks.deleteLead': "削除すると元に戻せません。",
   'looks.deleteGo': "削除",

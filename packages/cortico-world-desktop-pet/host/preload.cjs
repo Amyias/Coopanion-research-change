@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('petHost', {
   hideWhenFullscreen: (on) => ipcRenderer.send('pet:hideWhenFullscreen', !!on),
   /** Whether every click passes through the window while a fullscreen window covers its display. */
   passWhenFullscreen: (on) => ipcRenderer.send('pet:passWhenFullscreen', !!on),
+  /** Whether the window reaches down over a taskbar at the bottom of its display. */
+  overTaskbar: (on) => ipcRenderer.send('pet:overTaskbar', !!on),
+  /** Whether the window is left out of screenshots and screen recordings. */
+  hideFromCapture: (on) => ipcRenderer.send('pet:hideFromCapture', !!on),
   /** Whether clicks pass through right now because of that setting, each time it changes. */
   onFullscreenThrough: (cb) => ipcRenderer.on('pet:fullscreenThrough', (_e, on) => cb(!!on)),
   /** Whether every click passes through the window (the tray's "click through"); the window process enforces it. */
@@ -45,4 +49,6 @@ contextBridge.exposeInMainWorld('petHost', {
   onOverlay: (cb) => ipcRenderer.on('pet:overlay', (_e, on) => cb(!!on)),
   /** A frame drawn: the part of the page the overlay shows (the pet and its bubbles) in page pixels or null, and when it was drawn (ms since the epoch). */
   overlayFrame: (rect, at) => ipcRenderer.send('pet:overlayFrame', rect, at),
+  /** A picture of `rect` (page pixels) as the window draws it, over a plain backdrop: `{ png, width, height }` (base64, pixels), or null when none could be taken. */
+  portrait: (rect) => ipcRenderer.invoke('pet:portrait', rect),
 });

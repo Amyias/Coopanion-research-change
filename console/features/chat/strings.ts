@@ -57,6 +57,8 @@ const zh = {
   },
   /** A figure switch (`figure`), a dress switch (`dress`), or a figure that did not load. */
   figure: (kind: string, name: string, b: string): string => (kind === 'figure' ? `你将 ${b} 更换为「${name}」` : kind === 'dress' ? `你为 ${b} 更换了装扮` : `「${name}」显示失败，已切换为 Coo`),
+  /** A figure's failure line with the reason its page gave. */
+  figureWhy: (line: string, reason: string): string => `${line}：${reason}`,
 };
 
 export const en: typeof zh = {
@@ -105,6 +107,8 @@ export const en: typeof zh = {
     }
   },
   figure: (kind: string, name: string, b: string): string => (kind === 'figure' ? `You changed ${b} to ${name}` : kind === 'dress' ? `You changed ${b}'s outfit` : `${name} failed to show; switched to Coo`),
+  /** A figure's failure line with the reason its page gave. */
+  figureWhy: (line: string, reason: string): string => `${line}: ${reason}`,
 };
 
 export const S = pick({
@@ -114,13 +118,13 @@ export const S = pick({
 const stepZh = {
   pet_cua_screenshot: '截屏', pet_cua_click: '点击', pet_cua_move: '移动鼠标', pet_cua_drag: '拖动', pet_cua_mouse_down: '按下鼠标', pet_cua_mouse_up: '松开鼠标', pet_cua_scroll: '滚动', pet_cua_type: '打字',
   pet_cua_key: '按键', pet_cua_windows: '查看窗口', pet_cua_focus: '切换窗口', pet_cua_wait: '等待',
-  pet_move_to: '走动', pet_act: '做动作', pet_set: '调整设置', pet_quiet: '安静一会儿',
+  pet_move_to: '走动', pet_act: '做动作', pet_set: '调整设置', pet_quiet: '安静一会儿', pet_see_self: '查看形象',
 };
 
 export const stepEn: typeof stepZh = {
   pet_cua_screenshot: 'Screenshot', pet_cua_click: 'Click', pet_cua_move: 'Move the mouse', pet_cua_drag: 'Drag', pet_cua_mouse_down: 'Press the mouse button', pet_cua_mouse_up: 'Release the mouse button', pet_cua_scroll: 'Scroll', pet_cua_type: 'Type',
   pet_cua_key: 'Press keys', pet_cua_windows: 'List windows', pet_cua_focus: 'Switch window', pet_cua_wait: 'Wait',
-  pet_move_to: 'Walk', pet_act: 'Move about', pet_set: 'Adjust settings', pet_quiet: 'Keep quiet',
+  pet_move_to: 'Walk', pet_act: 'Move about', pet_set: 'Adjust settings', pet_quiet: 'Keep quiet', pet_see_self: 'Check appearance',
 };
 
 /** What the person reads for a tool's name. Tools not named here (the Persona's notes and turn control, other Worlds') stay on the Console page of the advanced mode. */

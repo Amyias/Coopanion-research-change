@@ -47,10 +47,12 @@ export const S: Partial<typeof en> = {
     }
   },
   figure: (kind: string, name: string, b: string): string => (kind === 'figure' ? `Du hast ${b} auf ${name} umgestellt` : kind === 'dress' ? `Du hast das Outfit von ${b} geändert` : `${name} konnte nicht angezeigt werden; zu Coo gewechselt`),
+  /** A figure's failure line with the reason its page gave. */
+  figureWhy: (line: string, reason: string): string => `${line}: ${reason}`,
 };
 
 export const STEP: Partial<typeof stepEn> = {
   pet_cua_screenshot: 'Screenshot', pet_cua_click: 'Klicken', pet_cua_move: 'Maus bewegen', pet_cua_drag: 'Ziehen', pet_cua_mouse_down: 'Maustaste drücken', pet_cua_mouse_up: 'Maustaste loslassen', pet_cua_scroll: 'Scrollen', pet_cua_type: 'Tippen',
   pet_cua_key: 'Tasten drücken', pet_cua_windows: 'Fenster auflisten', pet_cua_focus: 'Fenster wechseln', pet_cua_wait: 'Warten',
-  pet_move_to: 'Laufen', pet_act: 'Sich bewegen', pet_set: 'Einstellungen anpassen', pet_quiet: 'Still sein',
+  pet_move_to: 'Laufen', pet_act: 'Sich bewegen', pet_set: 'Einstellungen anpassen', pet_quiet: 'Still sein', pet_see_self: 'Aussehen prüfen',
 };
