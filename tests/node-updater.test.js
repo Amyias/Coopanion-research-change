@@ -132,6 +132,56 @@ describe('the Node updater', () => {
     expect(readFileSync(file)).toEqual(server.body);
   });
 
+  /** A release carrying both processor builds and both channel files; `digests` adds sha256 to the assets. */
+  async function dualReleaseServer({ digests = true, sha512 = { x64: 'x64-sha', arm64: 'arm64-sha' } } = {}) {
+    const body = Buffer.from('installer-bytes');
+    const sha256 = createHash('sha256').update(body).digest('hex');
+    const server = createServer((req, res) => {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const asset = (name, url) => ({ name, size: body.length, browser_download_url: `${base}${url}`, ...(digests ? { digest: `sha256:${sha256}` } : {}) });
+      if (req.url === '/api/latest') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ tag_name: 'v1.1.0', assets: [
+          asset('latest-arm64.yml', '/latest-arm64.yml'),
+          asset('latest.yml', '/latest.yml'),
+          asset('Coopanion-Setup-1.1.0-arm64.exe', '/setup-arm64'),
+          asset('Coopanion-Setup-1.1.0.exe', '/setup'),
+        ] }));
+        return;
+      }
+      const arm = req.url === '/latest-arm64.yml';
+      if (arm || req.url === '/latest.yml') {
+        const name = arm ? 'Coopanion-Setup-1.1.0-arm64.exe' : 'Coopanion-Setup-1.1.0.exe';
+        res.writeHead(200, { 'Content-Type': 'text/yaml' });
+        res.end(`version: 1.1.0\nfiles:\n  - url: ${name}\n    sha512: ${arm ? sha512.arm64 : sha512.x64}\n    size: ${body.length}\npath: ${name}\n`);
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise((done) => server.listen(0, '127.0.0.1', done));
+    closing.push(() => server.close());
+    const base = `http://127.0.0.1:${server.address().port}`;
+    return { apiBase: `${base}/api/latest`, base };
+  }
+
+  it('downloads the setup for the processor it runs on, whichever asset sorts first', async () => {
+    const server = await dualReleaseServer();
+    for (const [arch, name] of [['x64', 'Coopanion-Setup-1.1.0.exe'], ['arm64', 'Coopanion-Setup-1.1.0-arm64.exe']]) {
+      const updater = updaterFor(server.base, server.apiBase, '1.0.0', { arch });
+      const result = await updater.checkForUpdates();
+      expect(result.updateInfo.name).toBe(name);
+    }
+  });
+
+  it('checks an answer without digests against the channel file of the same processor', async () => {
+    const server = await dualReleaseServer({ digests: false });
+    for (const [arch, expected] of [['x64', 'x64-sha'], ['arm64', 'arm64-sha']]) {
+      const updater = updaterFor(server.base, server.apiBase, '1.0.0', { arch });
+      expect((await updater.checkForUpdates()).updateInfo).toMatchObject({ algorithm: 'sha512', expected });
+    }
+  });
+
   it('follows the redirect the asset host answers with', async () => {
     const server = await releaseServer({ redirect: true });
     const updater = updaterFor(server.base, server.apiBase);

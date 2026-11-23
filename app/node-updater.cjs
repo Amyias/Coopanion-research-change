@@ -50,6 +50,21 @@ function isNewer(candidate, current) {
   return false;
 }
 
+/** The setup this machine's processor runs: the arm64 build on an Arm build, the plain one elsewhere. */
+function installerFor(assets, arch) {
+  const arm = String(arch) === 'arm64';
+  return assets.find((asset) => {
+    const name = String(asset.name);
+    if (!/\.exe$/i.test(name) || name.endsWith('.blockmap')) return false;
+    return arm ? /-arm64\.exe$/i.test(name) : !/-arm64\.exe$/i.test(name);
+  });
+}
+
+/** The channel file electron-builder writes for this processor. */
+function channelName(arch) {
+  return String(arch) === 'arm64' ? 'latest-arm64.yml' : 'latest.yml';
+}
+
 /** The fields of `latest.yml` this updater reads; the first file is the setup it downloads. */
 function channelInfo(text) {
   const version = /^version:\s*(\S+)\s*$/m.exec(text)?.[1];
@@ -162,18 +177,19 @@ async function downloadTo(url, file, token, algorithm = 'sha512') {
 function createNodeUpdater(options) {
   const {
     owner, repo, currentVersion, cacheDir, installDir,
-    log = () => {}, spawn,
+    log = () => {}, spawn, arch = process.arch,
     releaseApi = `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
   } = options;
   let lastCheck = null;
   let ready = null;
 
-  /** What the download is checked against: the asset's sha256 from the API, or latest.yml's sha512. */
+  /** What the download is checked against: the asset's sha256 from the API, or the processor's channel file. */
   const verification = async (assets, installer) => {
     const digest = typeof installer.digest === 'string' ? installer.digest.replace(/^sha256:/, '') : '';
     if (digest) return { algorithm: 'sha256', expected: digest };
-    const channelAsset = assets.find((asset) => asset.name === 'latest.yml');
-    if (!channelAsset) throw new Error('the release states no digest for its installer');
+    const file = channelName(arch);
+    const channelAsset = assets.find((asset) => asset.name === file);
+    if (!channelAsset) throw new Error(`the release states no digest for its installer (${file})`);
     const channel = channelInfo(await requestText(channelAsset.browser_download_url, null));
     return { algorithm: 'sha512', expected: channel.sha512 };
   };
@@ -185,8 +201,8 @@ function createNodeUpdater(options) {
       const version = String(release.tag_name ?? '').replace(/^v/, '');
       if (!version) throw new Error('the latest release has no tag');
       const assets = Array.isArray(release.assets) ? release.assets : [];
-      const installer = assets.find((asset) => /\.exe$/i.test(String(asset.name)) && !String(asset.name).endsWith('.blockmap'));
-      if (!installer) throw new Error('the latest release has no installer');
+      const installer = installerFor(assets, arch);
+      if (!installer) throw new Error(`the latest release has no installer for ${arch}`);
       log('info', `latest release ${version}, ${installer.name} ${installer.size} bytes`);
       if (!isNewer(version, currentVersion)) {
         lastCheck = null;
@@ -247,4 +263,4 @@ function createNodeUpdater(options) {
   return { autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates, downloadUpdate, quitAndInstall };
 }
 
-module.exports = { createNodeUpdater, channelInfo, isNewer, releaseSource, cancellationToken };
+module.exports = { createNodeUpdater, channelInfo, channelName, installerFor, isNewer, releaseSource, cancellationToken };
