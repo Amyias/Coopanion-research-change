@@ -10,7 +10,7 @@
  * Colors follow the World's `theme` through `data-theme` on the root element, and text the app
  * language (i18n.js): the one stamped on the page, then the one the World's prefs carry.
  */
-import { applyTheme, clamp, f, ICONS, linked } from './ui.js';
+import { applyTheme, clamp, f, ICONS, layBeside, linked } from './ui.js';
 import { language, t, useLanguage } from './i18n.js';
 import { createSfx } from './sound.js';
 import { createSpeech, textSteps } from './speech.js';
@@ -43,7 +43,7 @@ cooStyle.textContent = COO_CSS;
 document.head.append(cooStyle, skinStyle, accentStyle, bubbleStyle);
 
 const prefs = {
-  roam: 'calm', sound: true, theme: document.documentElement.dataset.theme, scale: 1, bubbleSize: 1, fontSize: 1, bubbleSpeed: 1, glow: 7, user: '', mic: false, micDevice: '', bot: null,
+  roam: 'calm', sound: true, theme: document.documentElement.dataset.theme, scale: 1, bubbleSize: 1, fontSize: 1, bubbleSpeed: 1, sayBubbleHoldSec: 0, glow: 7, user: '', mic: false, micDevice: '', bot: null,
   /** Voice input: switched on, recognizer ready, why not, how to talk, and the mode in force. */
   voice: { enabled: false, ready: false, detail: null, hint: '', mode: 'hold' },
   /** The actions shown as buttons beside the pet on hover. */
@@ -54,6 +54,8 @@ const prefs = {
   statusBubble: true,
   /** What the person typed, said or sent from the chat page stays above Coo (see lines); off, speech shows only while it is heard. */
   saidBubbles: true,
+  /** Seconds a settled line stays; 0 = until its reply closes (see lines). */
+  saidBubbleHoldSec: 0,
   /** Draw at the moving frame rate while the body rests too. */
   /** Frames a second while the body moves; 0 follows the display. */
   frameRate: 60,
@@ -384,6 +386,7 @@ function applyPrefs(p) {
   if (typeof p.bubbleSize === 'number') { prefs.bubbleSize = p.bubbleSize; sizeVar('--bubble-size', p.bubbleSize); }
   if (typeof p.fontSize === 'number') { prefs.fontSize = p.fontSize; sizeVar('--bubble-font', p.fontSize); }
   if (typeof p.bubbleSpeed === 'number') prefs.bubbleSpeed = p.bubbleSpeed;
+  if (typeof p.sayBubbleHoldSec === 'number') prefs.sayBubbleHoldSec = p.sayBubbleHoldSec;
   if (typeof p.rememberPosition === 'boolean') { prefs.rememberPosition = p.rememberPosition; reportPosition(); }
   if (typeof p.user === 'string') prefs.user = p.user;
   if (typeof p.micDevice === 'string' && p.micDevice !== prefs.micDevice) { prefs.micDevice = p.micDevice; stopMic(); }
@@ -392,6 +395,7 @@ function applyPrefs(p) {
   if (typeof p.doubleClickChat === 'boolean') prefs.doubleClickChat = p.doubleClickChat;
   if (typeof p.statusBubble === 'boolean') { prefs.statusBubble = p.statusBubble; setBody({ thoughtShown: p.statusBubble }); }
   if (typeof p.saidBubbles === 'boolean') { prefs.saidBubbles = p.saidBubbles; if (!p.saidBubbles) for (const line of lines) if (!line.live) fadeLine(line); }
+  if (typeof p.saidBubbleHoldSec === 'number') prefs.saidBubbleHoldSec = p.saidBubbleHoldSec;
   if (typeof p.lockFrameRate === 'boolean') prefs.lockFrameRate = p.lockFrameRate;
   if (typeof p.frameRate === 'number' && p.frameRate >= 0) prefs.frameRate = p.frameRate;
   // the window process does the hiding and the passing through; the page only passes the settings on
@@ -496,10 +500,25 @@ function stepActs() {
   const l = at();
   if (!l || l.busy) return;
   const a = acts.shift();
-  body.do(a);
+  if (a === FIREWORKS) lightFireworks(l); else body.do(a);
   actWord = a;
   actUntil = T + (words.get(a)?.seconds ?? 1);
   holdRoam(15);
+}
+/** The New Year fireworks, a word `act` orders carry only while the World offers it: a picture above and behind Coo, kept inside the window. */
+const FIREWORKS = 'fireworks_2027', FIREWORKS_W = 520, FIREWORKS_H = 310;
+/** A little past the 6.3 s the picture takes to fade out on its own. */
+const FIREWORKS_MS = 6500;
+function lightFireworks(l) {
+  const img = document.createElement('img');
+  img.className = 'fireworks';
+  img.src = '/web/new-year-2027.svg';
+  img.width = FIREWORKS_W;
+  img.height = FIREWORKS_H;
+  img.style.left = clamp(l.x - FIREWORKS_W / 2, 0, innerWidth - FIREWORKS_W) + 'px';
+  img.style.top = clamp(l.box.y + l.box.h / 2 - FIREWORKS_H, 0, innerHeight - FIREWORKS_H) + 'px';
+  stage.prepend(img);
+  setTimeout(() => img.remove(), FIREWORKS_MS);
 }
 
 /* ---------- say / ask ---------- */
@@ -641,17 +660,22 @@ function startItem(it) {
   }
 }
 
-/** Compare both cursor positions with the same rectangle so the bubble's animation cannot start a hover. */
+/**
+ * Compare both cursor positions with the same rectangle so the bubble's animation cannot start a hover. A hover
+ * starts only from a known position outside the bubble: a frame without one (the window turning click-through
+ * reports a pointerleave) keeps the last known position and the hold as they were.
+ */
 function heldByCursor(it) {
   const p = cursor.at;
+  if (!p) return false;
   const previous = it.cursorAt;
   it.cursorAt = p;
-  if (!p || bubble.hidden || clicksPass()) {
+  if (bubble.hidden || clicksPass()) {
     it.cursorHolding = false;
     return false;
   }
   const r = bubble.getBoundingClientRect();
-  it.cursorHolding = inRect(p, r) && (it.cursorHolding || !previous || !inRect(previous, r));
+  it.cursorHolding = inRect(p, r) && (it.cursorHolding || (!!previous && !inRect(previous, r)));
   return it.cursorHolding;
 }
 
@@ -678,8 +702,12 @@ function stepDialog(dt) {
     if (it.skippedAt !== undefined) { if (T - it.skippedAt >= LINE_FADE) closeBubble(); return; }
     const held = heldByCursor(it);
     if (it.i < 0 || it.beatDone) {
-      if (it.beatDone && held) it.holdUntil += dt;
-      if (it.beatDone && T < it.holdUntil) return;
+      if (it.beatDone) {
+        if (held) it.holdUntil += dt;
+        // a question or guide card waiting behind the line ends a fixed hold where the automatic one would
+        const cut = !it.rush && queue.some((q) => q.kind === 'ask' || q.kind === 'dialog') ? it.extraHold : 0;
+        if (T < it.holdUntil - cut) return;
+      }
       it.i++;
       it.beatDone = false;
       if (it.i >= it.beats.length) {
@@ -704,12 +732,14 @@ function stepDialog(dt) {
     }
     const b = it.beats[it.i];
     if (T < it.startAt) return;
-    if (!b.text) { it.beatDone = true; it.holdUntil = T + .8 / prefs.bubbleSpeed; return; }
+    if (!b.text) { it.beatDone = true; it.holdUntil = T + .8 / prefs.bubbleSpeed; it.extraHold = 0; return; }
     typeText(it, b.text, dt, b.anchors || []);
     if (it.shown >= b.text.length && !it.beatDone) {
       it.beatDone = true;
       const last = it.i === it.beats.length - 1;
-      it.holdUntil = T + (it.rush ? RUSH_HOLD : (last ? 1.6 + b.text.length * .07 : .9 + b.text.length * .03) / prefs.bubbleSpeed);
+      const auto = (last ? 1.6 + b.text.length * .07 : .9 + b.text.length * .03) / prefs.bubbleSpeed;
+      it.holdUntil = T + (it.rush ? RUSH_HOLD : prefs.sayBubbleHoldSec || auto);
+      it.extraHold = Math.max(0, prefs.sayBubbleHoldSec - auto);
     }
     return;
   }
@@ -1259,7 +1289,8 @@ function showHeard() {
  * answered by the first speech or question Coo starts after it settled; until that reply's bubble has closed (and,
  * for a line not answered yet, while Coo works or has speech queued) the line and those before it stay, and they
  * fade REPLIED_FADE seconds after it closes. A line Coo does not answer fades UNANSWERED_FADE seconds after it was
- * said. The stack holds at most MAX_LINES bubbles and MAX_ROWS rows of text: past either the oldest fades, answered
+ * said. With a fixed saidBubbleHoldSec a line fades that many seconds after it settled instead, whatever Coo does.
+ * The stack holds at most MAX_LINES bubbles and MAX_ROWS rows of text: past either the oldest fades, answered
  * or not, and the newest always stays. A click fades a settled line at once; one still being heard has its cancel button.
  */
 const REPLIED_FADE = 1, UNANSWERED_FADE = 8;
@@ -1336,9 +1367,11 @@ function stepLines() {
     if (r ? r.endedAt === undefined : busy) held = i;
     else if (r && T >= r.endedAt + REPLIED_FADE) answered = i;
   });
+  const hold = prefs.saidBubbleHoldSec;
   lines.forEach((line, i) => {
-    if (line.fadeAt !== null || line.live || i <= held) return;
-    if (i <= answered || (!line.reply && T >= line.settledAt + UNANSWERED_FADE)) fadeLine(line);
+    if (line.fadeAt !== null || line.live) return;
+    if (hold) { if (T >= line.settledAt + hold) fadeLine(line); }
+    else if (i > held && (i <= answered || (!line.reply && T >= line.settledAt + UNANSWERED_FADE))) fadeLine(line);
   });
   const up = lines.filter((l) => l.fadeAt === null);
   let rows = up.reduce((n, l) => n + rowsOf(l), 0);
@@ -1615,10 +1648,9 @@ function placeMenu(l) {
   // as far out from where the body stands as the hover buttons, so those that were showing stay where they were;
   // from where it stands, not from its box, which narrows and shifts as it turns round
   const c = l.side, reach = c.reach + 10, R = l.x + reach, L = l.x - reach;
-  const onRight = R + grid.offsetWidth <= innerWidth - 8;
+  const onRight = layBeside(grid, l.x, reach, innerWidth);
   // whole pixels: the menu rides up and down with the body, and text at a fraction of a pixel snaps on its own, apart from its frame
   const y = (el) => { el.style.top = Math.round(clamp(c.y - el.offsetHeight / 2, 8, innerHeight - el.offsetHeight - 8)) + 'px'; };
-  grid.style.left = f(clamp(onRight ? R : L - grid.offsetWidth, 8, innerWidth - grid.offsetWidth - 8)) + 'px';
   y(grid);
   // the run controls hold their edge next to the body, so the quit question grows away from it
   // a long quit question (Japanese, Russian) that would run off the left edge stays on the screen
@@ -1627,9 +1659,7 @@ function placeMenu(l) {
   // the buttons line up on the edge next to the body
   rail.style.alignItems = onRight ? 'flex-end' : 'flex-start';
   y(rail);
-  grid.style.direction = onRight ? '' : 'rtl';
-  // each side grows out of the body and folds back into it
-  grid.style.setProperty('--dx', onRight ? '-16px' : '16px');
+  // the run controls grow out of the body and fold back into it, as the grid does
   rail.style.setProperty('--dx', onRight ? '16px' : '-16px');
 }
 
@@ -2453,16 +2483,11 @@ const menuParts = () => [menu.querySelector('.m-grid'), menu.querySelector('.m-r
 /** The pointer is on one of the menu's two sides (the menu itself covers the page without taking the pointer). */
 function overMenu(p) { return !menu.hidden && !leaving(menu) && menuParts().some((el) => inRect(p, el.getBoundingClientRect(), 6)); }
 
-/** Beside the body, on the right unless that runs off the screen. */
+/** Beside the body as the menu's buttons are, so opening the menu leaves each button where it was. */
 function placeTools(l) {
   // across from where the body stands, not from its middle: a figure's middle swings sideways as it turns round
-  const c = { x: l.x, y: l.side.y }, reach = l.side.reach + 10;
-  const w = tools.offsetWidth, h = tools.offsetHeight;
-  const left = c.x + reach + w <= innerWidth - 8 ? c.x + reach : c.x - reach - w;
-  tools.style.left = f(clamp(left, 8, innerWidth - w - 8)) + 'px';
-  // they grow out of the body's side and fold back into it
-  tools.style.setProperty('--dx', left > c.x ? '-16px' : '16px');
-  tools.style.top = f(clamp(c.y - h / 2, 8, innerHeight - h - 8)) + 'px';
+  layBeside(tools, l.x, l.side.reach + 10, innerWidth);
+  tools.style.top = f(clamp(l.side.y - tools.offsetHeight / 2, 8, innerHeight - tools.offsetHeight - 8)) + 'px';
 }
 function layout(dt = 0) {
   const l = at();

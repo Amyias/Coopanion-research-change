@@ -4,7 +4,7 @@
  * Output goes through four tools that drive the pet page (bubble, options, going somewhere,
  * expressions and motions). Input arrives as events: speech heard through the pet window's
  * microphone (transcribed in this process by FunASR's SenseVoice or by Whisper, by Windows' own recognizer, or by an
- * OpenAI-compatible transcription service), typed text, answers to `pet_ask`, and touches
+ * OpenAI-compatible transcription service; the recording goes along when the endpoint takes audio), typed text, answers to `pet_ask`, and touches
  * (poke, petting, being thrown). The page reports what actually happened; receipts and
  * events state only that.
  *
@@ -31,7 +31,8 @@ import { nowIso, shortTime } from 'cortico/core/util.ts';
 import type { Language } from 'cortico/core/language.ts';
 import type { DeepPartial } from 'cortico/world.ts';
 import {
-  DESKTOP_PET_ID, MAX_HOVER_BUTTONS, MAX_LOOK_NAME, MAX_SAVED_LOOKS, PET_ACTIONS, SELF_KEYS, THRESHOLD_DB_MAX, THRESHOLD_DB_MIN, TOUCH_KINDS, USER_MAX, asrEngineFor,
+  DESKTOP_PET_ID, MAX_HOVER_BUTTONS, MAX_LOOK_NAME, MAX_SAVED_LOOKS, PET_ACTIONS, RECORDING_MINUTES_MAX, RECORDING_MINUTES_MIN, SELF_KEYS, THRESHOLD_DB_MAX,
+  THRESHOLD_DB_MIN, TOUCH_KINDS, USER_MAX, asrEngineFor,
   desktopPetConfigGroups, directSettings, hoverButtonList, scaleOf, selfAdjustMode, speechFor, touchWakes,
   type AsrEngine, type DesktopPetConfigSection, type MicMode, type PetSkin, type PetTheme, type SavedLook, type RoamMode, type SelfKey,
 } from './config.ts';
@@ -44,7 +45,7 @@ import { describeHostReason } from './host-reason.ts';
 import { RuntimeStore, type ModelSpec } from './runtime/store.ts';
 import { SENSEVOICE, SherpaAsr, WHISPER, type SherpaModelKind, type SherpaModule, type SherpaState } from './asr/sherpa.ts';
 import { SystemRecognizer, systemRecognizerSupported, type SystemRecognizerState, type SystemSentence } from './asr/system-recognizer.ts';
-import { TranscriptionApi, type TranscriptionState } from './asr/transcription-api.ts';
+import { SAMPLE_RATE, TranscriptionApi, wavFile, type TranscriptionState } from './asr/transcription-api.ts';
 import { Packer, Segmenter, rmsDb, type SegmentConfig, type SegmentSink, type Utterance } from './asr/segmenter.ts';
 import { comboLabel, hotkeyBadge, hotkeyLabel, parseHotkey, splitTaps, TAP_MAX_MS, watchHotkey, type HotkeyTrigger, type KeyWatcher } from './asr/hotkey.ts';
 import { joinSpeech, looksHallucinated } from './asr/result.ts';
@@ -59,7 +60,7 @@ import { CUA_OFF_TOOL_DECLS } from './cua/tools.ts';
 import type { Answer } from './cua/engine-ipc.ts';
 import { PackImporter } from './pack-import.ts';
 import { dressTable, planSettings, sayScale, type SettingChange } from './self.ts';
-import { MODEL_TEXT, type ModelLanguage, type ModelText, type NoPortrait } from './model-text.ts';
+import { FIREWORKS_WORD, MODEL_TEXT, type ModelLanguage, type ModelText, type NoPortrait } from './model-text.ts';
 
 /** The console panels, titled in `language`. */
 function desktopPetPanelDecls(language: Language = 'zh'): WorldPanelDecl[] {
@@ -123,6 +124,13 @@ const HOLD_PRE_ROLL_FRAMES = Math.ceil((TAP_MAX_MS + 2 * HOTKEY_POLL_MS) / FRAME
  * segmenter is flushed when the key goes up, and frames that arrive later are not used.
  */
 const MIC_RELEASE_MS = 500;
+/** Holidays the bot is told of, by the person's local date: `MM-DD` every year, `YYYY-MM-DD` once. */
+const HOLIDAYS: Record<keyof ModelText['holiday'], string> = { christmas: '12-25', newYear2027: '2027-01-01' };
+const HOLIDAY_TYPE = 'desktop-pet.holiday';
+/** How often the World looks for a holiday that began while the pet is on the desktop. */
+const HOLIDAY_CHECK_MS = 60_000;
+/** The New Year fireworks as `pet_act` takes them while they are offered; the pet page draws them. */
+const FIREWORKS: VocabWord = { id: FIREWORKS_WORD, kind: 'motion', names: {}, about: {}, seconds: 0 };
 
 /**
  * Run controls an embedding app lends the pet's menu. Each button shows only when its control is
@@ -322,6 +330,7 @@ const DIALOG_CPS = 4;
 
 let seq = 0;
 const nextId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
+const samplesIn = (parts: readonly Int16Array[]) => parts.reduce((n, p) => n + p.length, 0);
 const pct = (fraction: number) => `${Math.round(fraction * 100)}%`;
 
 /** The first expression among a beat's words for the chat page's tag: its id, and its first name in each language of the body's vocabulary. */
@@ -391,6 +400,11 @@ export class DesktopPetWorld implements World {
   private committing = false;
   private readonly segmenter: Segmenter;
   private readonly packer = new Packer({ minChars: 1 });
+  /**
+   * PCM for the pending batch. Null keeps the batch text-only: a sentence was transcribed while its recording could
+   * not go along (`recordingGoes`), or the batch's recording ran past `asr.recording.maxMinutes`.
+   */
+  private heardPcm: Int16Array[] | null = [];
   private readonly queue: Utterance[] = [];
   private transcribing = false;
   private packTimer: NodeJS.Timeout | null = null;
@@ -409,6 +423,9 @@ export class DesktopPetWorld implements World {
   private touch: TouchBatch | null = null;
   /** A touch has woken the bot and no turn has ended since; touches until then wait for the next wake. */
   private touchWoke = false;
+  /** The New Year event reached the bot in this turn and the fireworks are not lit yet. */
+  private fireworksOffered = false;
+  private holidayTimer: NodeJS.Timeout | null = null;
   /** The local date of the last event's time stamp; the next event on another date names its date again. */
   private stampDay = '';
   private prefsKey = '';
@@ -735,6 +752,7 @@ export class DesktopPetWorld implements World {
     await this.syncTypeKey();
     this.prefsKey = this.prefsSignature();
     this.prefsTimer = setInterval(() => this.syncPrefs(), PREFS_SYNC_MS);
+    this.holidayTimer = setInterval(() => { if (this.desktopTold) this.tellHoliday(); }, HOLIDAY_CHECK_MS);
   }
 
   async stop(): Promise<void> {
@@ -745,6 +763,8 @@ export class DesktopPetWorld implements World {
     this.quiet = null;
     if (this.prefsTimer) clearInterval(this.prefsTimer);
     this.prefsTimer = null;
+    if (this.holidayTimer) clearInterval(this.holidayTimer);
+    this.holidayTimer = null;
     this.savePosition();
     await this.importer?.cancel();
     if (this.packTimer) clearTimeout(this.packTimer);
@@ -783,6 +803,7 @@ export class DesktopPetWorld implements World {
 
   onTurnEnded(): void {
     this.touchWoke = false;
+    this.fireworksOffered = false;
     this.cua.onTurnEnded();
   }
 
@@ -823,6 +844,7 @@ export class DesktopPetWorld implements World {
    * first, then a `delivered` record the history places the message at.
    */
   onEventsSettled(events: readonly EventEnvelope[], outcome: 'delivered' | 'discarded'): void {
+    if (outcome === 'delivered' && events.some((e) => e.senderKey === `${HOLIDAY_TYPE}.newYear2027`)) this.fireworksOffered = true;
     const cursors = events
       .filter((e) => this.pendingChat.delete(e.cursor) || (e.cursor < this.startCursor && chatItem(e)?.kind === 'user'))
       .map((e) => e.cursor);
@@ -968,6 +990,7 @@ export class DesktopPetWorld implements World {
       bubbleSize: this.cfg.window.bubbleSize,
       fontSize: this.cfg.window.fontSize,
       bubbleSpeed: this.cfg.window.bubbleSpeed,
+      sayBubbleHoldSec: this.cfg.window.sayBubbleHoldSec,
       glow: this.cfg.window.glow,
       frameRate: this.cfg.window.frameRate,
       lockFrameRate: this.cfg.window.lockFrameRate,
@@ -984,6 +1007,7 @@ export class DesktopPetWorld implements World {
       status: this.status.status,
       statusBubble: this.cfg.statusBubble,
       saidBubbles: this.cfg.saidBubbles,
+      saidBubbleHoldSec: this.cfg.saidBubbleHoldSec,
       bot: this.botInfo(),
     };
   }
@@ -1377,6 +1401,21 @@ export class DesktopPetWorld implements World {
     if (on === this.desktopTold) return;
     this.desktopTold = on;
     this.opts.onDesktopChange?.(on);
+    if (on) this.tellHoliday();
+  }
+
+  /** Tells the bot of today's holiday once that day; a reconnect or a restart finds the event already stored. */
+  private tellHoliday(): void {
+    const host = this.host;
+    if (!host) return;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: this.opts.timezone }).format(new Date());
+    const id = (Object.keys(HOLIDAYS) as Array<keyof typeof HOLIDAYS>).find((h) => today.endsWith(HOLIDAYS[h]));
+    if (!id) return;
+    const senderKey = `${HOLIDAY_TYPE}.${id}`;
+    // today's event is less than a day old: the bound keeps the lookup off the older history
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    if (host.store.range({ source: this.id, senderKey, fromTs: since, limit: 1 }).length) return;
+    void this.push(HOLIDAY_TYPE, senderKey, this.t.holiday[id], 'debounce');
   }
 
   private onPageGone(): void {
@@ -1737,6 +1776,7 @@ export class DesktopPetWorld implements World {
     this.queue.length = 0;
     this.cancels++;
     this.packer.take();
+    this.heardPcm = [];
     this.committing = false;
     this.partial = '';
     this.wasSpeaking = false;
@@ -1815,7 +1855,11 @@ export class DesktopPetWorld implements World {
           if (u.result) this.showHeard();
           continue;
         }
-        this.packer.add(text);
+        if (this.packer.add(text) && this.heardPcm !== null) {
+          const parts = this.recordingGoes() ? [...this.heardPcm, u.pcm] : null;
+          // past the limit the batch goes as text, and its PCM is let go of at once
+          this.heardPcm = parts && samplesIn(parts) <= this.cfg.asr.recording.maxMinutes * 60 * SAMPLE_RATE ? parts : null;
+        }
         this.remember({ text, at: Date.now(), ms: res.ms });
         this.voiceFrame({ type: 'text', text, ms: res.ms });
         this.pendingText(text);
@@ -1871,6 +1915,24 @@ export class DesktopPetWorld implements World {
     this.server.sendPet({ t: 'listen', phase: 'partial', text: this.partial, interim: this.interim });
   }
 
+  /** `asr.recording.enabled` is on and the current endpoint takes `audio/wav`. */
+  private recordingGoes(): boolean {
+    return this.cfg.asr.recording.enabled && this.host?.modelFacts.accepts('audio/wav') === true;
+  }
+
+  /** Takes the recording of the delivered sentences: one WAV while `recordingGoes`, else nothing. */
+  private recording(transcript: boolean): BlobInput[] {
+    const parts = this.heardPcm;
+    this.heardPcm = [];
+    if (!parts?.length || !this.recordingGoes()) return [];
+    const pcm = new Int16Array(samplesIn(parts));
+    let at = 0;
+    for (const p of parts) { pcm.set(p, at); at += p.length; }
+    const seconds = Math.round(pcm.length / SAMPLE_RATE * 10) / 10;
+    const fallbackText = transcript ? this.t.recording(this.userName, seconds) : this.t.recordingAlone(this.userName, seconds);
+    return [{ bytes: wavFile(pcm), mime: 'audio/wav', name: 'speech.wav', fallbackText }];
+  }
+
   /** Delivers the packed text once nothing upstream is still open. */
   private schedulePack(): void {
     const upstream = this.transcribing || this.queue.length > 0;
@@ -1894,7 +1956,11 @@ export class DesktopPetWorld implements World {
       this.server.sendPet({ t: 'listen', phase: 'heard', text });
       // speech through the talk key stops the round; always listening also hears a TV or other people, so it only wakes
       const trigger = this.cfg.asr.mic.mode === 'always' ? 'flush' : 'interrupt';
-      void this.push('desktop-pet.speech', 'desktop-pet.voice', this.t.heard(this.userName, text), trigger, { meta: { text } });
+      const transcript = this.cfg.asr.recording.transcript;
+      const blobs = this.recording(transcript);
+      // the recognized text is left out only while the recording goes in its place
+      const heard = blobs.length && !transcript ? this.t.heardRecorded(this.userName) : this.t.heard(this.userName, text);
+      void this.push('desktop-pet.speech', 'desktop-pet.voice', heard, trigger, { meta: { text }, ...(blobs.length ? { blobs } : {}) });
       return;
     }
     if (this.segmenter.active || this.transcribing || this.queue.length > 0) this.listenOpen = true;
@@ -1963,7 +2029,7 @@ export class DesktopPetWorld implements World {
     void this.record({ kind: 'say', beats: beats.map((b) => ({ text: b.text, ...moodOf(b.actions, this.vocab()) })) }, beats.map((b) => b.text).join(''), shown.blobs);
     if (!spoken) return { text: this.t.imagesShown(shown.blobs.length, this.chat.size > 0) };
     const now = Date.now();
-    const selfSec = estimateSeconds(beats, this.cfg.window.bubbleSpeed, this.cfg.speech.enabled ? speechTextSteps : undefined);
+    const selfSec = estimateSeconds(beats, this.cfg.window.bubbleSpeed, this.cfg.speech.enabled ? speechTextSteps : undefined, this.cfg.window.sayBubbleHoldSec);
     this.sayEnds = this.sayEnds.filter((l) => l.at > now);
     const free = this.sayEnds.at(-1)?.at ?? now;
     const waitSec = (free - now) / 1000;
@@ -2148,10 +2214,11 @@ export class DesktopPetWorld implements World {
 
   private async act(args: Record<string, unknown>): Promise<ToolOutcome> {
     const list = Array.isArray(args.actions) ? args.actions : typeof args.actions === 'string' ? [args.actions] : [];
-    const vocab = this.vocab();
+    const vocab = this.fireworksOffered ? [...this.vocab(), FIREWORKS] : this.vocab();
     const { actions, dropped } = parseActions(list, vocab);
     if (!actions.length) return { text: this.t.actNone(dropped), failed: true };
     if (!this.server.sendPet({ t: 'act', id: nextId('c'), actions })) return this.notConnected('pet_act');
+    if (actions.includes(FIREWORKS.id)) this.fireworksOffered = false;
     const lasting = actions.filter((a) => vocab.find((v) => v.id === a)?.lasting);
     return { text: this.t.actReceipt(actions, lasting, dropped) };
   }
@@ -2335,6 +2402,15 @@ export class DesktopPetWorld implements World {
           await this.syncHotkey();
           return this.voiceState();
         }
+        case 'setRecording': {
+          const raw = args[0] && typeof args[0] === 'object' ? args[0] as Record<string, unknown> : {};
+          const recording: Partial<DesktopPetConfigSection['asr']['recording']> = {};
+          if (typeof raw.enabled === 'boolean') recording.enabled = raw.enabled;
+          if (typeof raw.transcript === 'boolean') recording.transcript = raw.transcript;
+          if (Number.isInteger(raw.maxMinutes)) recording.maxMinutes = Math.max(RECORDING_MINUTES_MIN, Math.min(RECORDING_MINUTES_MAX, raw.maxMinutes as number));
+          if (Object.keys(recording).length) this.opts.persist({ asr: { recording } });
+          return this.voiceState();
+        }
         // the meter's mark; the segmenter reads the live section, so the next frame is measured against it
         case 'setThreshold': {
           const db = args[0];
@@ -2412,6 +2488,12 @@ export class DesktopPetWorld implements World {
         hotkeyProblem: this.hotkeyProblem,
         open: this.gateOpen(),
         devices: this.devices,
+      },
+      /** `asr.recording`, the range of its `maxMinutes`, and whether the current endpoint takes the recording. */
+      recording: {
+        ...this.cfg.asr.recording,
+        range: [RECORDING_MINUTES_MIN, RECORDING_MINUTES_MAX],
+        endpointTakesAudio: this.host?.modelFacts.accepts('audio/wav') === true,
       },
       level: this.level,
       thresholdDb: this.cfg.asr.segment.thresholdDb,

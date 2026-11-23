@@ -60,22 +60,22 @@ Coopanion 是一只住在屏幕底边的桌宠，名叫 Coo。它在底边走来
 
 你需要：
 
-- Windows 10 / 11（64 位）、macOS 13 及以上（Apple 芯片和 Intel 都行），或者 64 位 Linux 桌面（X11；Wayland 会话里经 XWayland 运行，有[Linux](#linux)一节写的限制；语音识别要 glibc 2.32 及以上，也就是 Ubuntu 22.04、Debian 12 及更新的版本）；
+- Windows 10 或 11（x64）、Windows 11（Arm64）、macOS 13 及以上（Apple 芯片和 Intel 都行），或者 64 位 Linux 桌面（X11；Wayland 会话里经 XWayland 运行，有[Linux](#linux)一节写的限制；语音识别要 glibc 2.32 及以上，也就是 Ubuntu 22.04、Debian 12 及更新的版本）；
 - 一家模型服务的 API Key，按用量付费（见[费用与隐私](#费用与隐私)），或者一个开了套餐的 ChatGPT 账号。
 
 每个版本的发布页都附有 `SHA256SUMS.txt`，可以用来核对下载的文件。
 
 ### Windows
 
-- **安装包**：从[最新发布](https://github.com/Amyias/Coopanion-research-change/releases/latest)下载 `Coopanion-Setup-版本号.exe` 并运行。安装包没有数字签名，Windows 可能提示「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」。默认装在 `%LOCALAPPDATA%\Programs\Coopanion`，程序和数据都在这个目录里。别装进 Program Files 这类要管理员权限的目录，Coopanion 在那里写不了数据，会提示后退出。开始菜单里没有它，从桌面图标打开。
+- **安装包**：从[最新发布](https://github.com/Amyias/Coopanion-research-change/releases/latest)下载 `Coopanion-Setup-版本号.exe` 并运行；Arm 处理器的电脑下载 `Coopanion-Setup-版本号-arm64.exe`。安装包没有数字签名，Windows 可能提示「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」。默认装在 `%LOCALAPPDATA%\Programs\Coopanion`，程序和数据都在这个目录里。别装进 Program Files 这类要管理员权限的目录，Coopanion 在那里写不了数据，会提示后退出。开始菜单里没有它，从桌面图标打开。
 - **一行命令**：在 PowerShell 里运行
 
   ```powershell
   irm https://raw.githubusercontent.com/Amyias/Coopanion-research-change/main/installer/install.ps1 | iex
   ```
 
-  如果杀毒软件拦下了图形界面的安装，脚本会保留下载好的安装包并打印路径。可以用 `Coopanion-Setup-版本号.exe /S` 静默安装，或者先把 Coopanion 加进杀毒软件的白名单再装。
-- **便携版**：从[最新发布](https://github.com/Amyias/Coopanion-research-change/releases/latest)下载 `Coopanion-版本号-win-x64-portable.zip`，解压到任意文件夹，运行 `Coopanion.exe`。数据放在这个文件夹的 `data` 里。整个文件夹复制一份就是另一只 Coo，记忆和设置互不影响；安装版和便携版加起来最多同时开 5 只。便携版不会自动更新，升级时把新版解压到新文件夹，再把旧的 `data` 拷过去。
+  脚本按处理器下载对应的安装包。如果杀毒软件拦下了图形界面的安装，脚本会保留下载好的安装包并打印路径。可以用已下载的安装包加 `/S` 静默安装，或者先把 Coopanion 加进杀毒软件的白名单再装。
+- **便携版**：从[最新发布](https://github.com/Amyias/Coopanion-research-change/releases/latest)下载 `Coopanion-版本号-win-x64-portable.zip`（Arm 处理器下载 `…-win-arm64-portable.zip`），解压到任意文件夹，运行 `Coopanion.exe`。数据放在这个文件夹的 `data` 里。整个文件夹复制一份就是另一只 Coo，记忆和设置互不影响；安装版和便携版加起来最多同时开 5 只。便携版不会自动更新，升级时把新版解压到新文件夹，再把旧的 `data` 拷过去。
 
 ### macOS
 
@@ -123,7 +123,7 @@ App Store 在前台时，Coo 会退到其他窗口后面，免得挡住购买时
 | OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) | `deepseek/deepseek-v4.1-flash` |
 | OpenAI | [platform.openai.com](https://platform.openai.com/settings/organization/api-keys) | `gpt-6-luna` |
 | Anthropic | [platform.claude.com](https://platform.claude.com/settings/keys) | `claude-haiku-5-5` |
-| Gemini（Google AI Studio） | [aistudio.google.com](https://aistudio.google.com/apikey) | `gemini-3.5-flash-lite` |
+| Gemini（Google AI Studio） | [aistudio.google.com](https://aistudio.google.com/apikey) | `gemini-4-hydrogen` |
 | xAI | [console.x.ai](https://console.x.ai/team/default/api-keys) | `grok-4.3` |
 
 表里是应用[供应商表](packages/cortico-provider-coo/src/vendors.ts)中的默认模型。想用别的模型，在「开始」页的「模型」框里改；要让 Coo 操作电脑，模型得支持图片输入。通义千问、Kimi、智谱 GLM、MiniMax 分国内和国际两个平台，账号和 Key 不通用。新建连接时，界面语言是简体中文就默认用国内平台，其他语言默认用国际平台，可以在「开始」页切换。豆包、百度千帆、阶跃星辰和阶跃 Step Plan 只能用中国大陆账号。我们拿真实 Key 测过的只有 DeepSeek、Anthropic 和阶跃 Step Plan，其他几家连不上请开 issue。
@@ -138,12 +138,16 @@ App Store 在前台时，Coo 会退到其他窗口后面，免得挡住购买时
 
 - **说话**：快速按一下**左 Alt**（Mac 上是**左 Option**），紧接着按住说话，松开发送。说话键、麦克风、说话门槛和收音方式（按住说话键时收音、用说话键切换收音、持续收音）在「语音输入」页改。麦克风选系统默认时，你换了系统的默认输入设备，Coo 也跟着换。所选的麦克风拔掉或找不到时，Coo 改用系统默认输入设备，插回后再换回来。收音开着回声消除和降噪，不开自动增益，Coo 不会改动系统的麦克风音量；声音太小时，在系统设置里调高输入音量。
 - **打字**：鼠标移到 Coo 身上，点旁边的气泡按钮；也可以在「对话」页里打字。打开「习惯 → 打字键」后，在任何窗口都能叫出打字框（默认双击左 Ctrl）。打字框一条消息最多贴 4 张图，「对话」页最多 8 张。
+- **对话页**：往上翻到更早的消息后，输入框上方出现「↓ 回到底部」，点一下回到最新的消息。
 - **换键**：说话键和打字键都可以改成别的键、组合键或鼠标侧键，按一到三下触发。两个设成同一个键时，快速双击打开打字框；最后一下按住超过 300 毫秒才开始收音，这时不会打开打字框。这 300 毫秒里说的话也会收进去；开了「按住时才打开麦克风」时，麦克风要到这时才打开，请等倾听气泡出现再说话。
-- **气泡**：把鼠标移进已显示的气泡，气泡会停留到鼠标移开。点一下 Coo 说的话，这句话剩下的部分就跳过。Coo 请你确认时（比如操作电脑之前）会响一声提醒，在「习惯 → 音效」里取消勾选「提醒」就不再响。状态气泡、输入气泡、气泡和字的大小、出字速度在「习惯」页调。
+- **气泡**：把鼠标移进已显示的气泡，气泡会停留到鼠标移开。点一下 Coo 说的话，这句话剩下的部分就跳过。Coo 请你确认时（比如操作电脑之前）会响一声提醒，在「习惯 → 音效」里取消勾选「提醒」就不再响。状态气泡、输入气泡、气泡和字的大小、出字速度在「习惯」页调。台词和输入气泡停留多久也在那里设置：「自动」，或「固定」1–60 秒，台词气泡从出完字、输入气泡从发出或识别完成时开始计时；台词后面排着提问或引导时，固定档按自动档的时长收起。
 - **闹钟**：定好的闹钟在「应用通知」页的「闹钟」里能看到，也能删掉，删了 Coo 会知道。每天的闹钟遇到夏令时切换，仍按原来的当地时间响。应用关着时错过的闹钟，下次启动会补上。
+- **节日**：圣诞节和 2027 年元旦当天，Coo 第一次出现在桌面上时会知道今天过节；Coo 已经在桌面上的话，零点时知道。知道是元旦时，Coo 可以在身后放一次写着「2027」的烟花。
 - **互动**：点一下是戳它，在它头上来回划是摸头，按住拖动是把它拎起来。拖到一半松手能把它甩出去，拎到另一块屏幕上松手，它就留在那块屏幕上。哪些互动它会马上回应，在「习惯 → 回应模式」里选。
 
 语音默认在本机识别：中、英、日、韩语用 FunASR，法、德、西、葡、意、俄语用 Whisper，Windows 上还可以用系统自带的识别。也可以在「语音输入」页改用 **OpenAI 兼容**的转写服务，这时每句录音都会发给那个服务。
+
+当前的模型支持音频输入时（例如开了多模态的 Gemini 协议端点），每批语音的录音会和识别出的文字一起发送给模型。「语音输入」页可以关闭「投递录音」，也可以关闭「投递转写」只发送录音；一批语音的录音超过「录音上限」（默认 5 分钟）时只发送文字。模型不支持音频输入时只发送文字。
 
 鼠标停在 Coo 身上，旁边会冒出几个按钮：打字、语音输入、走动、夜间模式、音效、隐藏、大小、装扮和「我的 World」里，你选的那几个（最多 6 个，开局引导里选，之后在「习惯」里改）。右键 Coo 也是这几个，再加上设置、暂停 / 继续和退出。鼠标停在装扮按钮上，头顶会出现一排收藏的形象，滚轮或点击切换。悬停按钮里可以加上「大小」：鼠标停在它上面，头顶出现大小滑条，拖动或在按钮上滚动滚轮调整；点一下「大小」把滑条钉住，再点一次或点别处收起。调大小、换形象时，鼠标指着的按钮不跟着桌宠移动，移开后再回到桌宠旁边。关掉设置窗口不会退出应用。托盘菜单（Mac 上是菜单栏图标）里有「显示桌宠」或「隐藏桌宠」、「启用鼠标穿透」、「重新启动」和「退出」；开机启动在「习惯 → 通用」里。启用鼠标穿透后，点击都会穿过 Coo 落到下面的窗口，它照常走动和说话，玩游戏时比较方便；这个开关只在本次运行有效，点「停用鼠标穿透」或退出应用就恢复。
 
@@ -213,6 +217,8 @@ App Store 在前台时，Coo 会退到其他窗口后面，免得挡住购买时
 - 点名字或头像看扩展详情，进入它的配置；
 - 把 World 从侧栏藏起来，或者让它照常运行、但不让 Coo 看到它的工具和消息，也可以停用、单独重启或删除它。
 
+在 World 设置页，点击标题旁带圆圈的 **i** 即可打开扩展详情。
+
 运行中的 World 不能删除，要先停用。删除的 World 会标红留在「待生效」里，重启进程后才消失。
 
 <p align="center"><img src="image/README/worlds-zh.png" alt="World 扩展：已安装的 World、状态与分组入口" width="960"></p>
@@ -231,7 +237,7 @@ Mac 版、deb 和 Windows 便携版不会自动更新。有新版本时，设置
 
 - **费用**：Coopanion 免费。聊天的费用由你选的模型服务按用量收取，在「用量与成本」页能看到。DeepSeek、OpenAI、Anthropic、Gemini 付费档和 xAI 有内置价目，金额可以按实时汇率换算成别的币种（取不到汇率时用内置汇率）。登录 ChatGPT 时用的是套餐额度，不显示费用。
 - **会发给模型服务的**：你说的话、打的字、附带的图片、你和 Coo 的互动，以及操作电脑时的截图。只发给你配置的那一家。
-- **留在你电脑上的**：API Key 和 ChatGPT 的登录状态、记忆、聊天记录、设置和日志。语音在本机识别，只发出识别出来的文字；如果在「语音输入」页选了转写服务，每句录音会发给那个服务。
+- **留在你电脑上的**：API Key 和 ChatGPT 的登录状态、记忆、聊天记录、设置和日志。语音在本机识别；当前的模型支持音频输入时，每批语音的录音也会发送给模型服务，录音保存在本机的数据目录，在「语音输入」页可以关闭。如果在「语音输入」页选了转写服务，每句录音会发给那个服务。
 - **匿名使用统计**：发到 `survey.palailab.org`，内容是版本号、系统和硬件概况、用的哪家模型、装了哪些扩展、使用次数和时长、设置、程序崩溃时出错的位置，以及一个随机生成的安装编号；不含对话、截图、Key、错误消息和你的文件。每个字段见 [docs/TELEMETRY.md](docs/TELEMETRY.md)。在「习惯 → 通用 → 使用统计」里可以关掉。
 - **其他联网**：向 GitHub 查询新版本（Windows 安装版和 AppImage 在启动时和之后每 6 小时查一次，关掉自动更新就不查；其他版本在打开设置窗口时查）；扩展市场访问 npm 和 GitHub 上的官方扩展索引，投票和评论要访问 GitHub；下载语音模型时访问 ModelScope，失败了改用 Hugging Face。
 

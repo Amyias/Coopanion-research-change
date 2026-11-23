@@ -60,22 +60,22 @@ What changed in each version is in [Releases](https://github.com/Amyias/Coopanio
 
 You need:
 
-- Windows 10 / 11 (64-bit), macOS 13 or later (Apple silicon or Intel), or a 64-bit Linux desktop (X11; in a Wayland session it runs through XWayland, with the limits under [Linux](#linux); speech recognition needs glibc 2.32 or later, which means Ubuntu 22.04, Debian 12 or newer);
+- Windows 10 or 11 (x64), Windows 11 (Arm64), macOS 13 or later (Apple silicon or Intel), or a 64-bit Linux desktop (X11; in a Wayland session it runs through XWayland, with the limits under [Linux](#linux); speech recognition needs glibc 2.32 or later, which means Ubuntu 22.04, Debian 12 or newer);
 - an API key from one model service, billed by usage (see [Cost and privacy](#cost-and-privacy)), or a ChatGPT account with a plan.
 
 Every release page has a `SHA256SUMS.txt` for checking the downloads.
 
 ### Windows
 
-- **Installer**: download `Coopanion-Setup-<version>.exe` from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest) and run it. The installer is not code-signed, so Windows may say "Windows protected your PC": click **More info** → **Run anyway**. It installs to `%LOCALAPPDATA%\Programs\Coopanion` by default, and the program and its data both live in that folder. Don't install it into Program Files or another folder that needs administrator rights: Coopanion can't write its data there and quits with an error. There is no Start menu entry; open it from the desktop icon.
+- **Installer**: download `Coopanion-Setup-<version>.exe` from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest) and run it; on a PC with an Arm processor, download `Coopanion-Setup-<version>-arm64.exe`. The installer is not code-signed, so Windows may say "Windows protected your PC": click **More info** → **Run anyway**. It installs to `%LOCALAPPDATA%\Programs\Coopanion` by default, and the program and its data both live in that folder. Don't install it into Program Files or another folder that needs administrator rights: Coopanion can't write its data there and quits with an error. There is no Start menu entry; open it from the desktop icon.
 - **One command**: in PowerShell, run
 
   ```powershell
   irm https://raw.githubusercontent.com/Amyias/Coopanion-research-change/main/installer/install.ps1 | iex
   ```
 
-  If antivirus software blocks the graphical installer, the script keeps the downloaded installer and prints its path. Run it silently with `Coopanion-Setup-<version>.exe /S`, or add Coopanion to your antivirus's allowed list and try again.
-- **Portable**: download `Coopanion-<version>-win-x64-portable.zip` from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest), unpack it anywhere and run `Coopanion.exe`. Its data is kept in the folder's `data`. Copy the whole folder and you have a second Coo with its own memory and settings; up to 5 can run at once, installed and portable together. The portable version does not update itself: unpack the new version into a new folder and copy the old `data` over.
+  The script downloads the installer for your processor. If antivirus software blocks the graphical installer, the script keeps the downloaded installer and prints its path. Run the downloaded installer with `/S` for a silent install, or add Coopanion to your antivirus's allowed list and try again.
+- **Portable**: download `Coopanion-<version>-win-x64-portable.zip` (`…-win-arm64-portable.zip` for an Arm processor) from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest), unpack it anywhere and run `Coopanion.exe`. Its data is kept in the folder's `data`. Copy the whole folder and you have a second Coo with its own memory and settings; up to 5 can run at once, installed and portable together. The portable version does not update itself: unpack the new version into a new folder and copy the old `data` over.
 
 ### macOS
 
@@ -113,7 +113,7 @@ Choose a service in Coo's bubble or on the Start page, create an API key on its 
 | --- | --- | --- |
 | OpenAI | [platform.openai.com](https://platform.openai.com/settings/organization/api-keys) | `gpt-6-luna` |
 | Anthropic | [platform.claude.com](https://platform.claude.com/settings/keys) | `claude-haiku-5-5` |
-| Gemini (Google AI Studio) | [aistudio.google.com](https://aistudio.google.com/apikey) | `gemini-3.5-flash-lite` |
+| Gemini (Google AI Studio) | [aistudio.google.com](https://aistudio.google.com/apikey) | `gemini-4-hydrogen` |
 | xAI | [console.x.ai](https://console.x.ai/team/default/api-keys) | `grok-4.3` |
 | OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) | `deepseek/deepseek-v4.1-flash` |
 | DeepSeek | [platform.deepseek.com](https://platform.deepseek.com/api_keys) | `deepseek-flash` |
@@ -138,12 +138,16 @@ These are the defaults from the app's [vendor table](packages/cortico-provider-c
 
 - **Talk**: tap **Left Alt** (**Left Option** on Mac), then hold it and speak; let go to send. The talk key, microphone, speech threshold and listening mode (**While the talk key is held**, **The talk key switches it on and off**, **All the time**) are on the Voice input page. With the system default microphone selected, Coo switches along when you change the system's default input device. If the chosen microphone is unplugged or can't be found, Coo listens through the system default input and switches back when it returns. Voice input uses echo cancellation and noise suppression but not automatic gain control, so Coo leaves the system's microphone volume alone; if your voice comes through too quiet, raise the input volume in the system settings.
 - **Type**: hover over Coo and click the bubble button next to it, or type on the Chat page. Turn on **Habits → Typing key** to open the typing box from any window (double-press Left Ctrl by default). A message can carry up to four pasted images from the typing box, or eight from the Chat page.
+- **Chat page**: after you scroll up to earlier messages, **↓ Back to bottom** appears above the input; click it to return to the latest message.
 - **Changing keys**: the talk key and the typing key can each be another key, a key combination or a mouse side button, pressed one to three times. When both use the same key, a quick double tap opens the typing box; holding the last press for more than 300 ms starts listening instead and does not open the box. What you say during those 300 ms is kept; with **Open the microphone only while held** on, the microphone opens only at that point, so wait for the listening bubble before speaking.
-- **Bubbles**: move the pointer into an open bubble to keep it open until the pointer leaves. Click what Coo is saying to skip the rest of that line. Coo plays a chime when it asks you to confirm something, such as using your computer; clear **Alerts** under **Habits → Sounds** to silence it. Activity bubbles, input bubbles, bubble and text size, and how fast the text appears are on the Habits page.
+- **Bubbles**: move the pointer into an open bubble to keep it open until the pointer leaves. Click what Coo is saying to skip the rest of that line. Coo plays a chime when it asks you to confirm something, such as using your computer; clear **Alerts** under **Habits → Sounds** to silence it. Activity bubbles, input bubbles, bubble and text size, and how fast the text appears are on the Habits page. So is how long speech and input bubbles stay: **Auto**, or **Fixed** at 1–60 seconds, counted from when a speech bubble has typed out or an input bubble was sent or recognized; a question or guide card waiting behind a speech bubble ends a fixed hold at the Auto time.
 - **Alarms**: the alarms Coo has set are listed under **Alarms** on the App notifications page, where you can delete them; Coo is told when you do. Daily alarms keep ringing at the same local time across daylight-saving changes. Alarms missed while the app was closed go off the next time it starts.
+- **Holidays**: on Christmas Day and on January 1, 2027, Coo learns it is a holiday when it first appears on your desktop that day, or at midnight if it is already there. When it learns of the New Year, Coo can light fireworks behind itself that spell out 2027, once.
 - **Touch**: click to poke Coo, rub back and forth over its head to pat it, or drag to pick it up. Let go mid-swing to throw it; drop it on another display and it stays there. **Habits → Response mode** decides which touches Coo answers right away.
 
 Speech is recognized locally by default: FunASR for Chinese, English, Japanese and Korean, Whisper for French, German, Spanish, Portuguese, Italian and Russian, and on Windows you can also use the system recognizer. You can switch to an **OpenAI-compatible** transcription service on the Voice input page instead; each sentence you say is then sent to that service as audio.
+
+When the current model takes audio (a Gemini-protocol endpoint with multimodal input on, for example), each batch of speech goes to the model with its recording along with the recognized text. On the Voice input page you can turn off **Send the recording**, or turn off **Send the transcript** to send the recording alone; a batch whose recording is longer than **Recording limit** (5 minutes by default) is sent as text only. With a model that does not take audio, only the text is sent.
 
 Rest the pointer on Coo and the buttons you picked pop up beside it: up to 6 of typing, voice input, walking, night mode, sounds, hide, size, dress up and My Worlds (picked in the first-run introduction, changed later under **Habits**). Right-clicking Coo shows the same ones, plus settings, pause / resume and quit. Hovering the dress button shows your favourite looks in a row over Coo's head; scroll or click to switch. A **Size** hover button can be added too: hovering it shows a size slider over Coo's head; drag it, or scroll over the button. Clicking **Size** keeps the slider open until you click it again or click elsewhere. While the size or the look changes, the button under the pointer stays put and moves back beside Coo once the pointer leaves. Closing the settings window does not quit the app. The tray menu (the menu bar icon on Mac) has **Show pet** or **Hide pet**, **Let clicks pass through Coo**, **Restart** and **Quit**; **Start at login** is under **Habits → General**. With click-through on, every click goes through Coo to the window below while Coo keeps walking and talking, which helps while gaming. It only lasts for the current run: choose **Stop clicks passing through Coo** or quit to turn it off.
 
@@ -213,6 +217,8 @@ A newly installed extension shows up under **Applies on restart**; click **Resta
 - click a World's name or avatar to see its details and open its configuration;
 - hide a World from the sidebar, keep it running but hide its tools and messages from Coo, or stop, restart or delete it.
 
+On a World's settings page, click the circled **i** beside its title to open the extension details.
+
 A running World can't be deleted; stop it first. A deleted World stays under **Applies on restart**, marked in red, until you restart the process.
 
 <p align="center"><img src="image/README/worlds-en.png" alt="World extensions: installed Worlds, status and grouping controls" width="960"></p>
@@ -231,7 +237,7 @@ The Mac version, the deb and the Windows portable version do not update themselv
 
 - **Cost**: Coopanion is free. The model service you choose bills you for usage, which you can see on the Usage & cost page. DeepSeek, OpenAI, Anthropic, Gemini's paid tier and xAI have built-in prices, and amounts can be shown in another currency at the current exchange rate (or a built-in rate when it can't be fetched). When you sign in with ChatGPT, usage counts toward the plan and no cost is shown.
 - **Sent to the model service**: what you say and type, attached images, how you interact with Coo, and screenshots during computer use. Only the service you configured receives them.
-- **Kept on your computer**: API keys and the ChatGPT sign-in, memory, conversation history, settings and logs. Speech is recognized locally and only the recognized text is sent; if you choose a transcription service on the Voice input page, each sentence's recording goes to that service.
+- **Kept on your computer**: API keys and the ChatGPT sign-in, memory, conversation history, settings and logs. Speech is recognized locally; when the current model takes audio, each batch's recording also goes to the model service and is kept in the data folder on your computer, which you can turn off on the Voice input page. If you choose a transcription service on the Voice input page, each sentence's recording goes to that service.
 - **Anonymous usage statistics**: sent to `survey.palailab.org`. They contain the app version, an outline of the system and hardware, which model service and model you use, which extensions are installed, how often and how long you use the app, settings, where in the program a crash happened, and a randomly generated install ID; no conversations, screenshots, keys, error messages or files. Every field is listed in [docs/TELEMETRY.md](docs/TELEMETRY.md). Turn them off under **Habits → General → Usage statistics**.
 - **Other network access**: checking GitHub for new versions (the Windows installer build and the AppImage check at start and every 6 hours while automatic updates are on; the other builds check when the settings window opens); npm and the official extension index on GitHub for the extension market, and GitHub for votes and comments; ModelScope, falling back to Hugging Face, when downloading the speech model.
 

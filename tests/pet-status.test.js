@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { clamp, f, ICONS, linked } from '../packages/cortico-world-desktop-pet/web/ui.js';
+import { clamp, f, ICONS, layBeside, linked } from '../packages/cortico-world-desktop-pet/web/ui.js';
 import { COO_CSS, mini, normalizeSkin, skinCss } from '../packages/cortico-world-desktop-pet/web/coo/coo.js';
 import { t } from '../packages/cortico-world-desktop-pet/web/i18n.js';
 import { carouselHtml, clampIndex, lightboxHtml } from '../packages/cortico-world-desktop-pet/web/say-images.js';
@@ -39,7 +39,7 @@ function page({ host = false, hash = '', speech = {}, sfx = {}, fetchLooks = asy
     send(data) { this.sent.push(JSON.parse(data)); }
   };
   win.deps = {
-    applyTheme: (theme) => { win.document.documentElement.dataset.theme = theme; }, clamp, f, ICONS, linked: (text, n) => linked(text, n, win.document),
+    applyTheme: (theme) => { win.document.documentElement.dataset.theme = theme; }, clamp, f, ICONS, layBeside, linked: (text, n) => linked(text, n, win.document),
     COO_CSS, mini, normalizeSkin, skinCss,
     createSfx: () => ({ unlock() {}, pop() {}, alert() {}, babble() {}, blub() {}, configure() {}, set() {}, setPan() {}, listenStart() {}, listenEnd() {}, select() {}, tick() {}, ...sfx }),
     createSpeech: () => ({ configure() {}, begin() {}, reveal() { return false; }, stop() {}, active: false, ...speech }),
@@ -56,7 +56,7 @@ function page({ host = false, hash = '', speech = {}, sfx = {}, fetchLooks = asy
     // hover hints (hints.js) are not what these tests look at
     mountHints() {}, tipOf, tipWithoutNote,
   };
-  win.eval(`const { applyTheme, clamp, f, ICONS, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic, runFrames, fetchLooks, lookAvailable, lookPicture, sameLook, carouselHtml, clampIndex, lightboxHtml, SIZE, scaleSlider, sizeEcho, restyle, springSize, swapIn, swapOut, mountHints, tipOf, tipWithoutNote } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, openMenu, closeBubble, stepWheel, stepSizer, cursor, step: (dt) => { T += dt; stepDialog(dt); stepTalkRead(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES, LINE_FADE };`);
+  win.eval(`const { applyTheme, clamp, f, ICONS, layBeside, linked, COO_CSS, mini, normalizeSkin, skinCss, createSfx, createSpeech, textSteps, loadBody, t, language, useLanguage, lightWall, dressFloor, modeButton, glowColor, setGlow, bindAppearance, announcePainted, createMic, runFrames, fetchLooks, lookAvailable, lookPicture, sameLook, carouselHtml, clampIndex, lightboxHtml, SIZE, scaleSlider, sizeEcho, restyle, springSize, swapIn, swapOut, mountHints, tipOf, tipWithoutNote } = window.deps;\n${source}\nbody = window.deps.body; window.page = { onOrder, openInput, openMenu, closeBubble, stepWheel, stepSizer, cursor, step: (dt) => { T += dt; stepDialog(dt); stepTalkRead(dt); stepLines(); stepStatus(); layout(dt); }, interactive: () => bubble.matches(UI_SELECTOR), lines: () => lines, overUi: (el) => el.matches(UI_SELECTOR), REPLIED_FADE, UNANSWERED_FADE, MAX_LINES, LINE_FADE };`);
   return { ...win.page, bubble: win.document.querySelector('#bubble'), bodyChanges, doc: win.document, sockets, win };
 }
 
@@ -167,6 +167,21 @@ describe('hovering a timed bubble', () => {
     expect(p.bubble.hidden).toBe(true);
   });
 
+  it.each(['say', 'dialog'])('lets a %s bubble close when the cursor report drops out under a stationary pointer', (kind) => {
+    const p = page();
+    p.bubble.getBoundingClientRect = () => ({ left: 10, right: 100, top: 10, bottom: 40 });
+    p.cursor.at = null;
+    show(p, kind);
+    advance(p, 2);
+    p.cursor.at = { x: 30, y: 20 };
+    advance(p, 4);
+    p.cursor.at = null;
+    advance(p, 1);
+    p.cursor.at = { x: 30, y: 20 };
+    advance(p, 80);
+    expect(p.bubble.hidden).toBe(true);
+  });
+
   it.each(['say', 'dialog'])('holds a %s bubble after the pointer enters until it leaves', (kind) => {
     const p = page();
     p.bubble.getBoundingClientRect = () => ({ left: 10, right: 100, top: 10, bottom: 40 });
@@ -179,6 +194,28 @@ describe('hovering a timed bubble', () => {
     p.cursor.at = { x: 110, y: 20 };
     advance(p, 80);
     expect(p.bubble.hidden).toBe(true);
+  });
+});
+
+describe('a fixed speech hold', () => {
+  it('holds each typed-out part of a line for its seconds, and only for the automatic hold with a question waiting behind', () => {
+    const p = page();
+    const holdSec = 3;
+    p.onOrder({ t: 'prefs', sayBubbleHoldSec: holdSec });
+    p.onOrder({ t: 'say', id: 's', beats: [{ text: 'First' }, { text: 'Next' }] });
+    // the part types out within the second step, where its hold starts
+    p.step(.01); p.step(1);
+    p.step(holdSec - .1);
+    expect(p.bubble.textContent).toBe('First');
+    p.step(.2); p.step(1);
+    expect(p.bubble.textContent).toBe('Next');
+    p.onOrder({ t: 'ask', id: 'q', question: 'Go on?', options: ['Yes'] });
+    // the automatic hold of a line's last part at bubble speed 1, as stepDialog sets it
+    const auto = 1.6 + 'Next'.length * .07;
+    p.step(auto - .1);
+    expect(p.bubble.textContent).toBe('Next');
+    p.step(.2); p.step(.01);
+    expect(p.bubble.classList.contains('ask')).toBe(true);
   });
 });
 
@@ -345,6 +382,18 @@ describe("the person's lines above Coo", () => {
     // centred over Coo's head (the body's layout.bubble.x; jsdom lays everything out zero wide)
     expect(p.lines().map((l) => l.el.style.left)).toEqual(['500px', '500px', '500px']);
     expect(p.doc.querySelector('#trail')).toBeNull();
+  });
+
+  it('with a fixed hold a line fades that many seconds after it settled, even while Coo still works on it', () => {
+    const p = page();
+    const holdSec = 3;
+    p.onOrder({ t: 'prefs', saidBubbleHoldSec: holdSec });
+    show(p, think);
+    said(p, '在吗', 1);
+    p.step(holdSec - .1);
+    expect(up(p)).toHaveLength(1);
+    p.step(.2);
+    expect(up(p)).toHaveLength(0);
   });
 
   it('with the switch off nothing typed or sent stays, and a heard line fades once it is settled', () => {
@@ -767,6 +816,22 @@ describe('the right-click menu', () => {
     bare.onOrder({ t: 'prefs', hoverButtons: [] });
     bare.openMenu();
     expect(bare.doc.querySelector('#menu').hidden).toBe(true);
+  });
+
+  it('lays its buttons out as the hover buttons are, mirrored alike when the body is near the right edge', () => {
+    for (const x of [450, 1000]) {
+      const p = page({ host: true });
+      p.win.deps.body.layout.x = x;
+      p.onOrder({ t: 'prefs', hoverButtons: ['chat', 'voice', 'theme', 'roam'] });
+      const tools = p.doc.querySelector('#tools');
+      tools.hidden = false;
+      p.step(.1);
+      const hover = { direction: tools.style.direction, dx: tools.style.getPropertyValue('--dx') };
+      p.openMenu();
+      const grid = p.doc.querySelector('.menu .m-grid');
+      expect({ direction: grid.style.direction, dx: grid.style.getPropertyValue('--dx') }, `body at ${x}`).toEqual(hover);
+      expect(hover.direction, `body at ${x}`).toBe(x > 900 ? 'rtl' : '');
+    }
   });
 });
 

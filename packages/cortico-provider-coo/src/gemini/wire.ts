@@ -62,12 +62,6 @@ export function geminiInlineMime(mime: string): string | null {
   return type.startsWith('image/') ? type : INLINE_MIMES[type] ?? null;
 }
 
-/**
- * Base64 characters of attachments one request carries at most, under Gemini's 20 MB limit on a
- * request with inline data. An attachment past the budget is left out; its text line stays.
- */
-export const INLINE_MAX_CHARS = 18 * 1024 * 1024;
-
 function dataUrl(url: string): { mimeType: string; data: string } {
   const match = /^data:([^;,]+);base64,(.*)$/s.exec(url);
   if (!match) throw new ResponseProtocolError('Gemini inline media requires a base64 data URL');
@@ -146,7 +140,6 @@ export function geminiInput(request: Request, options: GenerateOptions, opts: { 
     if (last?.role === 'user') last.parts.push(...parts);
     else contents.push({ role: 'user', parts });
   };
-  let inlineChars = 0;
   const blobs = (entry: ContextRecord): GeminiPart[] => {
     if (!opts.media?.enabled() || !entry.context.blobs?.length) return [];
     const parts: GeminiPart[] = [];
@@ -155,10 +148,7 @@ export function geminiInput(request: Request, options: GenerateOptions, opts: { 
       if (!mimeType) continue;
       const bytes = opts.media.read(ref.handle);
       if (!bytes) continue;
-      const data = bytes.toString('base64');
-      if (inlineChars + data.length > INLINE_MAX_CHARS) continue;
-      inlineChars += data.length;
-      parts.push({ inlineData: { mimeType, data } });
+      parts.push({ inlineData: { mimeType, data: bytes.toString('base64') } });
     }
     return parts;
   };
@@ -202,14 +192,17 @@ const legacy = (model: string): boolean => /^gemini-2\./.test(model);
 /** Flash-Lite models take `minimal`, which the other Gemini 3 models reject. */
 const MINIMAL = /flash-lite/;
 
-/** Gemini 3 levels. Gemini 3 cannot turn thinking off: `thinking: false` sends the lowest level the model takes. */
+/** Models whose top level is `xhigh`; the others top out at `high`. */
+const XHIGH = /^gemini-4-(hydrogen|neon)/;
+
+/** Gemini 3 and 4 levels. They cannot turn thinking off: `thinking: false` sends the lowest level the model takes. */
 export function thinkingConfig(spec: ModelSpec): Record<string, unknown> {
   if (legacy(spec.model)) {
     const budget = !spec.thinking ? 0 : spec.reasoningEffort === 'high' || spec.reasoningEffort === 'max' ? 24576
       : spec.reasoningEffort === 'medium' ? 8192 : spec.reasoningEffort === 'low' ? 1024 : -1;
     return { includeThoughts: budget !== 0, thinkingBudget: budget };
   }
-  const level = !spec.thinking ? (MINIMAL.test(spec.model) ? 'minimal' : 'low') : spec.reasoningEffort === 'max' || spec.reasoningEffort === 'xhigh' ? 'high' : spec.reasoningEffort ?? 'low';
+  const level = !spec.thinking ? (MINIMAL.test(spec.model) ? 'minimal' : 'low') : spec.reasoningEffort === 'max' || spec.reasoningEffort === 'xhigh' ? (XHIGH.test(spec.model) ? 'xhigh' : 'high') : spec.reasoningEffort ?? 'low';
   return { includeThoughts: true, thinkingLevel: level };
 }
 

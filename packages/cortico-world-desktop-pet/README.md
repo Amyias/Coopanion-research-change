@@ -45,9 +45,12 @@ bot 在屏幕底边有一个小身体,由一个形象包提供(见下文):内置
 | `desktop-pet.touch` | `[touch] 伙伴戳了你 3 下` / 摸了摸 / 拎起来甩了出去 / 摔晕 | `worlds.desktop-pet.touch.wakeOn` 让它唤醒的种类 debounce,其余 piggyback |
 | `desktop-pet.talk-key` | `[talk-key] 说话键读不到,伙伴按说话键说的话收不到:原因`(语音输入开着时，每次运行每种原因一条) | flush |
 | `desktop-pet.figure` | `[figure] 你现在的样子:…`(对方换了形象或打扮;bot 用 `pet_set` 自己换的不报) / `[figure] …没能显示出来(原因),你现在是 Coo 的样子` / `[figure] 词表变了。…`;词表或形象自己的目标有变化时都附上 | 换装 debounce,显示失败 flush |
+| `desktop-pet.holiday` | `[holiday] 今天是圣诞节。` / 2027 年元旦那条另写烟花和动作词 `fireworks_2027` | debounce |
 
 每条事件的正文前是对方那边的本地时间 `[HH:MM]`;一次运行的第一条、换了日期后的第一条带日期和星期 `[MM-DD 周X HH:MM]`。
 表里是中文版;模型文本是英文时,标签是 `[voice]` `[typed]` `[answer]` `[touch]` `[figure]`,星期写 `Sun` 这样的英文缩写。
+
+节日事件按对方的本地日期(12 月 25 日、2027 年 1 月 1 日),在当天桌宠第一次出现在桌面上时发,桌宠开着跨过零点的一分钟内也发;事件库里当天已有这条就不再发,重连和重启都一样。收到元旦事件的那一轮,`pet_act` 认 `fireworks_2027`,桌宠页在身后放 6.5 秒烟花(`web/new-year-2027.svg`);放过一次或这一轮结束就不再认。
 
 同一种互动 2.5 秒内连着来,并成一条带次数的事件。`wakeOn`(「习惯」页的「回应模式」)默认 `poke`:只有戳唤醒,摸头、放下和甩出跟着下一批送;`all` 都唤醒;`none` 都跟着下一批送;`custom` 只有 `touch.wakeKinds` 里的种类(`poke` `pet` `throw` `drop`,摔晕算在它结束的那次甩出或放下里)唤醒。鼠标划过桌宠也算摸头,拖开挡路的桌宠也算放下。一条互动按 debounce 送出后,到 bot 下一次结束一轮前,其余互动都按 piggyback 送。「伙伴」取自 `worlds.desktop-pet.user`,空着时是应用语言的默认称呼(`src/i18n`)。
 
@@ -92,11 +95,12 @@ Windows 上每 0.8 秒用 GDI 取一小块身体周围的屏幕像素来比,其�
 人说的话留在 Coo 旁边(`web/pet-app.js`):打字框发出的、识别完成的语音、对话页发来的消息各成一个虚线气泡,最新的在最下面,
 放在 Coo 背朝的一侧并让开 Coo 的气泡;那侧放不下换到另一侧,两侧都放不下就放到 Coo 的气泡上方。识别完成的语音前面画话筒,对话页来的画双向箭头。
 一条话由它之后 Coo 开始的第一句说话或提问回答:回答的气泡还在时,或者还没回答而 Coo 在忙(有状态)、有说话在排队时,这条和更早的都不淡出;
-回答的气泡关掉 1 秒后淡出,没有回答的 8 秒后淡出。最多 3 条、合计 6 行,超出时最早的先淡出,即使还在等回答。点一下关掉一条,识别中的那条用「取消」。
+回答的气泡关掉 1 秒后淡出,没有回答的 8 秒后淡出;`worlds.desktop-pet.saidBubbleHoldSec` 设了 1–60 秒时,改为从发出或识别完成起停这么久再淡出。最多 3 条、合计 6 行,超出时最早的先淡出,即使还在等回答。点一下关掉一条,识别中的那条用「取消」。
 
 气泡尺寸 `worlds.desktop-pet.window.bubbleSize` 缩放所有气泡的宽度、留白、圆角、尾巴、离头顶的距离和连到桌宠的小圆点,边框粗细不变;
 字体尺寸 `window.fontSize` 缩放气泡里的字和同一行的小图标,气泡的宽度不变。两项都是 0.8–1.6 倍,默认 1,不随桌宠的大小变。
 气泡速度 `window.bubbleSpeed` 是 0.5–2 倍,默认 1:Coo 的气泡每秒打 20 乘以它个字,打完后的停留时间除以它,`pet_say` 报的显示时长也按它算。
+`window.sayBubbleHoldSec` 设了 1–60 秒时,台词每段打完后停这么久,不随气泡速度变,`pet_say` 回执里本条和排在前面的秒数也按它算;后面排着提问或对话卡片时,这一段只停自动的时长。
 点一下台词气泡(链接除外)结束整句:声音停下,这句后面的段不再显示,队列里的下一条接着出;页面回报 `skipped`,之后 `pet_say` 回执里的排队时间从这时起算;提问和确认气泡只能用 × 或回答关掉。
 音量 `worlds.desktop-pet.sounds.volume`(声音组，整数 0–100,默认 100)按百分比调低桌宠页和装扮页的所有声音，说话声也在内，两页之间的响度比例不变。
 桌宠页的音效和说话声按 Coo 在所在显示器上的左右位置分配左右声道(`web/sound.js` 的 `setPan`),pan 值钳在 ±0.5 以内，贴着屏幕边时远侧也听得到;
@@ -187,6 +191,9 @@ Coo、精灵图和 Live2D 式分件模型都画在页面的沙箱 frame 里,截�
 
 桌宠窗口里的页面用麦克风收音,16 kHz 单声道 PCM 经 WebSocket 送到 World,按能量门限切句
 (`src/asr/segmenter.ts`),交给识别引擎,挡掉已知幻觉后作为 `desktop-pet.speech` 投递;应用语言是简体中文且 `asr.simplified` 开着时先把繁体转成简体。
+`asr.recording.enabled`(默认开)开着且当前端点收 `audio/wav`(`modelFacts.accepts`)时,一批里几句话的原声拼成一个 16 kHz 单声道 WAV,作为附件随事件投递,由 Core 存进部署数据目录;
+`asr.recording.transcript`(默认开)关掉时事件正文不带识别出的文字,只附录音。一批里有一句识别时录音不随发(开关关着或端点不收音频),或录音超过 `asr.recording.maxMinutes`(1–7,默认 5),整批只发文字;
+上限的推导见 `src/config.ts` 的 `RECORDING_MINUTES_MAX`。
 采集启用回声消除和降噪,关闭自动增益控制(AGC):Windows 上 Chromium 的 AGC 会调整系统麦克风音量。
 说话时桌宠歪头倾听,虚线气泡里边说边显示听到的字,还没定下来的部分是灰色的;用 Whisper 和转写接口时一句说完才出字。识别完成后这个气泡留在 Coo 旁边(见「桌宠窗口」)。
 按键收音(`hold`、`toggle`)时气泡里有「取消」按钮:桌宠页发 `cancel`,World 丢掉这次收音手上的音频、转写队列和已识别的文字,在途的转写落地后也丢掉,发 `listen` 的 `none`,不投递事件;`toggle` 下同时关掉收音。
@@ -207,6 +214,7 @@ Coo、精灵图和 Live2D 式分件模型都画在页面的沙箱 frame 里,截�
 
 `sherpa-onnx-node` 是本包的依赖,随包安装(Windows 约 24 MB,macOS 约 35 MB,Linux x64 约 33 MB),不在运行时下载;
 Windows x64、macOS arm64 / x64、Linux x64 / arm64 都有预编译包,Linux 上要 glibc 2.32 与 GCC 11 的 libstdc++ 以上(Ubuntu 22.04、Debian 12 起)。
+Windows arm64 的预编译包(`sherpa-onnx-win-arm64`)不在这一版 `sherpa-onnx-node` 的依赖里:Coopanion 的 Windows arm64 安装包自己带上它;本包单独装进 Cortico 时,`funasr` 和 `whisper` 在 Windows arm64 上载入不了。
 只有模型要下载:「语音输入」面板(或应用的新手引导)点一下「下载」,下的是当前引擎的模型;当前是 `system` 时下应用语言对应的那个,下完就换过去。
 文件依次从 ModelScope 取(国内可直接访问),取不到再从 Hugging Face 取,逐个按固定的 SHA-256 校验:
 
