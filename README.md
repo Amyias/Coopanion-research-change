@@ -23,6 +23,10 @@
 > **Personal modified version**: this repository is a personal fork of Coopanion, **not an official release**, and is not affiliated with Pal-AI-Lab; see [NOTICE](NOTICE) for its origin, license and the list of changes.
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/271755?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-271755" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/271755/daily?language=TypeScript" alt="Pal-AI-Lab%2FCoopanion | Trendshift" width="250" height="55"/></a>
+</p>
+
+<p align="center">
   <a href="https://coo.palailab.org">Website</a> ｜
   <a href="#install">Install</a> ｜
   <a href="#getting-started">Getting Started</a> ｜
@@ -67,14 +71,14 @@ Every release page has a `SHA256SUMS.txt` for checking the downloads.
 
 ### Windows
 
-- **Installer**: download `Coopanion-Setup-<version>.exe` from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest) and run it; on a PC with an Arm processor, download `Coopanion-Setup-<version>-arm64.exe`. The installer is not code-signed, so Windows may say "Windows protected your PC": click **More info** → **Run anyway**. It installs to `%LOCALAPPDATA%\Programs\Coopanion` by default, and the program and its data both live in that folder. Don't install it into Program Files or another folder that needs administrator rights: Coopanion can't write its data there and quits with an error. There is no Start menu entry; open it from the desktop icon.
+- **Installer**: download `Coopanion-Setup-<version>.exe` from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest) and run it. On a PC with an Arm processor, download `Coopanion-Setup-<version>-arm64.exe`. The installer is not code-signed, so Windows may say "Windows protected your PC": click **More info** → **Run anyway**. It installs to `%LOCALAPPDATA%\Programs\Coopanion` by default, and the program and its data both live in that folder. Don't install it into Program Files or another folder that needs administrator rights: Coopanion can't write its data there and quits with an error. Launch it from the desktop shortcut. If the installer could not create the shortcut, open `Coopanion.exe` in the install folder.
 - **One command**: in PowerShell, run
 
   ```powershell
   irm https://raw.githubusercontent.com/Amyias/Coopanion-research-change/main/installer/install.ps1 | iex
   ```
 
-  The script downloads the installer for your processor. If antivirus software blocks the graphical installer, the script keeps the downloaded installer and prints its path. Run the downloaded installer with `/S` for a silent install, or add Coopanion to your antivirus's allowed list and try again.
+  The script downloads the installer for your processor. If antivirus software blocks the graphical installer, the script keeps the downloaded installer and prints its path. Run the downloaded installer with `/S` for a silent install, or add Coopanion to your antivirus's allowed list and try again. A fresh silent install defaults to `%USERPROFILE%\Coopanion`.
 - **Portable**: download `Coopanion-<version>-win-x64-portable.zip` (`…-win-arm64-portable.zip` for an Arm processor) from the [latest release](https://github.com/Amyias/Coopanion-research-change/releases/latest), unpack it anywhere and run `Coopanion.exe`. Its data is kept in the folder's `data`. Copy the whole folder and you have a second Coo with its own memory and settings; up to 5 can run at once, installed and portable together. The portable version does not update itself: unpack the new version into a new folder and copy the old `data` over.
 
 ### macOS
@@ -101,7 +105,7 @@ While the App Store is in front, Coo drops behind other windows so it doesn't co
 ## Getting started
 
 1. **Start**: Coo drops to the bottom of the screen and an icon appears in the tray (the menu bar on Mac, the status bar on Linux). No window opens.
-2. **Follow the guide**: in its bubbles, Coo asks for the interface language, where you heard about it (you can skip this), what it should call you, what Coo is like, how often it walks around, which touches it should answer and which model service to use. Then it downloads the speech model: FunASR, about 230 MB, or Whisper, about 360 MB, when the interface language is French, German, Spanish, Portuguese, Italian or Russian. The download comes from ModelScope and falls back to Hugging Face. **Back** at the top left of the bubble returns to the step before, with your earlier answer in place. The × ends the guide, and **Guide** on the Start page runs it again. To change Coo's personality or the way it talks afterwards, just tell it; it writes the persona into its prompt itself.
+2. **Follow the guide**: in its bubbles, Coo asks for the interface language, what it should call you, where you heard about it (you can skip this), what Coo is like, how often it walks around, which touches it should answer and which model service to use. If a local speech model is missing, the guide offers to download FunASR (about 230 MiB), or Whisper (about 360 MiB) for French, German, Spanish, Portuguese, Italian or Russian. It tries ModelScope first and then Hugging Face. You can skip the download and still choose which buttons appear when you hover over Coo. **Back** at the top left of the bubble returns to the step before, with your earlier answer in place. The × ends the guide, and **Guide** on the Start page runs it again. To change Coo's personality or the way it talks afterwards, just tell it; it writes the persona into its prompt itself.
 3. **Say hello**: tap **Left Alt** (**Left Option** on Mac), then press and hold it, say "hello", and let go to send. Allow microphone access when asked.
 
 <details>
@@ -137,19 +141,31 @@ These are the defaults from the app's [vendor table](packages/cortico-provider-c
 ### Talking and playing
 
 - **Talk**: tap **Left Alt** (**Left Option** on Mac), then hold it and speak; let go to send. The talk key, microphone, speech threshold and listening mode (**While the talk key is held**, **The talk key switches it on and off**, **All the time**) are on the Voice input page. With the system default microphone selected, Coo switches along when you change the system's default input device. If the chosen microphone is unplugged or can't be found, Coo listens through the system default input and switches back when it returns. Voice input uses echo cancellation and noise suppression but not automatic gain control, so Coo leaves the system's microphone volume alone; if your voice comes through too quiet, raise the input volume in the system settings.
-- **Type**: hover over Coo and click the bubble button next to it, or type on the Chat page. Turn on **Habits → Typing key** to open the typing box from any window (double-press Left Ctrl by default). A message can carry up to four pasted images from the typing box, or eight from the Chat page.
+- **Type** on the Chat page or click the bubble button beside Coo to open the typing box. Enable **Habits → Typing key** to open the box from any window (double-press Left Ctrl by default). A message can contain up to 500 characters and four pasted images in the box, or 4,000 characters and eight images on the Chat page. Over-limit text stays in the draft. Choose **Continue on the Chat page** to move the text and images there if the draft fits its limit.
 - **Chat page**: after you scroll up to earlier messages, **↓ Back to bottom** appears above the input; click it to return to the latest message.
-- **Changing keys**: the talk key and the typing key can each be another key, a key combination or a mouse side button, pressed one to three times. When both use the same key, a quick double tap opens the typing box; holding the last press for more than 300 ms starts listening instead and does not open the box. What you say during those 300 ms is kept; with **Open the microphone only while held** on, the microphone opens only at that point, so wait for the listening bubble before speaking.
-- **Bubbles**: move the pointer into an open bubble to keep it open until the pointer leaves. Click what Coo is saying to skip the rest of that line. Coo plays a chime when it asks you to confirm something, such as using your computer; clear **Alerts** under **Habits → Sounds** to silence it. Activity bubbles, input bubbles, bubble and text size, and how fast the text appears are on the Habits page. So is how long speech and input bubbles stay: **Auto**, or **Fixed** at 1–60 seconds, counted from when a speech bubble has typed out or an input bubble was sent or recognized; a question or guide card waiting behind a speech bubble ends a fixed hold at the Auto time.
+- **Changing keys**: the talk key and the typing key can each be another key, a key combination or a mouse side button, pressed one to three times. When both use the same key, a quick double tap opens the typing box; holding the last press for more than 300 ms starts listening instead and does not open the box. What you say during those 300 ms is kept; with **Open the microphone only while held** on, the microphone opens only at that point, so wait for the listening bubble before speaking. The click-through pause key holds Right Ctrl by default. Set to the talk key's key (say, a tap of Left Alt and then a hold to talk, and a hold of Left Alt to pause), tapping first only listens and a plain hold only pauses click-through. **Habits** says so when the pause key is pressed exactly as the talk key.
+- **Bubbles**: move the pointer into an open speech bubble to keep it open until the pointer leaves; the opening guide keeps its own timing. Click what Coo is saying to skip the rest of that line. Coo plays a chime when it asks you to confirm something, such as using your computer; clear **Alerts** under **Habits → Sounds** to silence it. Activity bubbles, input bubbles, bubble and text size, and how fast the text appears are under **Habits → Bubbles**, where **Play sample** plays one exchange with the current settings. So is how long speech and input bubbles stay: **Auto**, or **Fixed** at 1–60 seconds, counted from when a speech bubble has typed out or an input bubble was sent or recognized; a question or guide card waiting behind a speech bubble ends a fixed hold at the Auto time.
 - **Alarms**: the alarms Coo has set are listed under **Alarms** on the App notifications page, where you can delete them; Coo is told when you do. Daily alarms keep ringing at the same local time across daylight-saving changes. Alarms missed while the app was closed go off the next time it starts.
 - **Holidays**: on Christmas Day and on January 1, 2027, Coo learns it is a holiday when it first appears on your desktop that day, or at midnight if it is already there. When it learns of the New Year, Coo can light fireworks behind itself that spell out 2027, once.
 - **Touch**: click to poke Coo, rub back and forth over its head to pat it, or drag to pick it up. Let go mid-swing to throw it; drop it on another display and it stays there. **Habits → Response mode** decides which touches Coo answers right away.
 
 Speech is recognized locally by default: FunASR for Chinese, English, Japanese and Korean, Whisper for French, German, Spanish, Portuguese, Italian and Russian, and on Windows you can also use the system recognizer. You can switch to an **OpenAI-compatible** transcription service on the Voice input page instead; each sentence you say is then sent to that service as audio.
 
-When the current model takes audio (a Gemini-protocol endpoint with multimodal input on, for example), each batch of speech goes to the model with its recording along with the recognized text. On the Voice input page you can turn off **Send the recording**, or turn off **Send the transcript** to send the recording alone; a batch whose recording is longer than **Recording limit** (5 minutes by default) is sent as text only. With a model that does not take audio, only the text is sent.
+When the current model takes audio (for example, a Gemini or Doubao connection with multimodal input enabled), each batch of speech goes to the model with its recording along with the recognized text. On the Voice input page you can turn off **Send the recording**, or turn off **Send the transcript** to send the recording without waiting for recognition. The recognition service can be stopped on its own and stays stopped after a restart; while it runs, the recognized text then shows in the bubble beside Coo and on the Chat page. A batch longer than **Recording limit** (5 minutes by default), or sent to a model that does not take audio, falls back to text when recognition is available.
 
-Rest the pointer on Coo and the buttons you picked pop up beside it: up to 6 of typing, voice input, walking, night mode, sounds, hide, size, dress up and My Worlds (picked in the first-run introduction, changed later under **Habits**). Right-clicking Coo shows the same ones, plus settings, pause / resume and quit. Hovering the dress button shows your favourite looks in a row over Coo's head; scroll or click to switch. A **Size** hover button can be added too: hovering it shows a size slider over Coo's head; drag it, or scroll over the button. Clicking **Size** keeps the slider open until you click it again or click elsewhere. While the size or the look changes, the button under the pointer stays put and moves back beside Coo once the pointer leaves. Closing the settings window does not quit the app. The tray menu (the menu bar icon on Mac) has **Show pet** or **Hide pet**, **Let clicks pass through Coo**, **Restart** and **Quit**; **Start at login** is under **Habits → General**. With click-through on, every click goes through Coo to the window below while Coo keeps walking and talking, which helps while gaming. It only lasts for the current run: choose **Stop clicks passing through Coo** or quit to turn it off.
+### Pet menus and click-through
+
+Rest the pointer on Coo to see your hover buttons. Choose up to six in the guide or under **Habits → Behavior**. The choices are typing, voice input, walking, night mode, sounds, hide, click-through, size, transparency, dress up, computer use and My Worlds. Right-click Coo for the same actions plus settings, pause / resume and quit.
+
+Hover over **Dress up** to see your favourite looks, then scroll or click to switch. Hover over **Size** or **Transparency** to open its slider. Drag the slider or scroll over its button to adjust it. Click the button to pin the slider while you move across the other buttons. Click it again or click elsewhere to close it. When you resize Coo or switch looks, the button stays under the pointer until you move away. Speech and questions wait while you use these controls. Confirmations appear immediately, and the thinking bubble appears once the controls close.
+
+**Habits → Display** also lets you set the figure’s transparency from 0 to 95%. Bubbles and controls keep their usual opacity. On Windows, enable **Full screen → Fade** there to use a separate value (40% by default) while the foreground window fills Coo’s display.
+
+The **Computer use** button shows whether Coo can use your computer. In **Habits**, adding this button or turning on computer use for the first time asks you to confirm the risks. After you confirm, the button switches computer use on or off directly. Until then, clicking it while computer use is off opens the setting.
+
+The tray menu (the menu bar icon on Mac) lets you show or hide Coo, toggle click-through, restart or quit. Closing the settings window leaves Coo running. **Start at login** is under **Habits → General**.
+
+With click-through on, clicks reach the window beneath Coo while it walks and talks. The **Click-through** hover button and the tray menu toggle the same setting for the current run. To click Coo temporarily, enable **Habits → Behavior → Click-through pause key** and hold the configured key on its own (Right Ctrl by default). Coo keeps taking clicks while a menu, look wheel, pinned slider, typing box, question or confirmation is open, or until you finish a drag.
 
 ### Appearance and sound
 
@@ -185,7 +201,7 @@ There are four settings for when Coo asks you first:
 - Only what you say, type or choose on the desktop pet's side can make Coo act. When another World asks it to use the computer, Coo checks with you in a bubble first.
 - Coo can hold keys down for up to 30 seconds, without pausing for your mouse or keyboard meanwhile, and keep a mouse button down across several steps. Whatever it still holds down is released when its turn ends.
 - As soon as you move the mouse or use the keyboard, Coo pauses and waits until you have been idle for two seconds (by default); if you keep going for 15 seconds, it gives up on that step. It also holds off while you are typing to it.
-- Anything you say with the talk key interrupts Coo once it is transcribed: the reply being written and the steps not yet started are dropped, while a click, drag or key sequence already under way finishes first and a held key is released at once. When it listens **All the time**, what Coo hears does not interrupt it. Pressing the talk key stops **Read bubbles aloud** at once, and lines that appear before you let go stay silent.
+- Anything you say with the talk key interrupts Coo once it is delivered: the reply being written and the steps not yet started are dropped, while a click, drag or key sequence already under way finishes first and a held key is released at once. When it listens **All the time**, what Coo hears does not interrupt it. Pressing the talk key stops **Read bubbles aloud** at once, and lines that appear before you let go stay silent.
 - Do logins, passwords and payments yourself. One wake allows 40 model requests by default; when Coo hits that limit it stops, and you can tell it to keep going. The limit is **Requests per wake-up** in advanced mode.
 
 ### Settings window
@@ -195,13 +211,17 @@ Open the settings window from the tray icon or from Coo's right-click menu.
 | Page | What's there |
 | --- | --- |
 | Start | Model connection, showing or hiding the pet, interface colors, the first-run guide |
-| Habits | Language and names, automatic updates, usage statistics, walking and touch responses, which settings Coo may change itself, shortcuts, display, sound, computer use, OBS overlay |
+| Habits | Language and names, automatic updates, usage statistics, walking and touch responses, which settings Coo may change itself, shortcuts, display (including motion), sound, computer use, OBS overlay |
 | Dress up | Figure, colors and accessories; import or uninstall figure packs |
 | Voice input | Recognition engine or transcription service, model download, talk key, microphone, listening mode, speech threshold |
 | System prompt | Persona and prompt templates; Ctrl+S saves, and **Apply now** puts the new prompt into the current conversation |
-| Usage & cost | Token usage and spending by day and model |
+| Usage & cost | Calls, tokens and spending over time, with breakdowns by purpose, model, model connection and World |
 | Chat | Conversation history, typing, images |
 | World extensions | Installed Worlds, groups and order, the extension market |
+
+In **Usage & cost → By World**, a shared request’s tokens and cost are split among its sources. Each participating World counts one call. Usage without a World source appears under **Unattributed**.
+
+**Motion** under Habits → Display sets how much the settings window and the pet animate, both at once: High keeps everything; Medium drops bounces and decorative flourishes, and lists that reorder fade instead of sliding; Low keeps only colour changes and the signs that something is under way (spinners, progress bars, thinking dots), and everything else lands at once. It follows the system's reduce-motion setting by default: Low when the system asks for less motion, High otherwise. Coo's own walking is not affected.
 
 Pause / resume and the switch to **Advanced mode** are at the bottom of the sidebar. Advanced mode adds the **Model connections**, Persona, Memory, **Console** and **Diagnostics** pages. Model connections is where you change models, adjust reasoning effort, add other compatible services, enter prices for services without built-in ones and install provider extensions.
 
@@ -231,13 +251,15 @@ If you quit the app while an extension is being installed or uninstalled, it wai
 
 The Windows installer build and the AppImage download new versions in the background, and Coo asks whether to restart and update when one is ready. Choose **Later** and it installs when you quit. To stop automatic updates, turn off **Habits → General → Automatic updates**: Coopanion then stops checking and downloading, and an update that was already downloaded is not installed.
 
+On Windows, the installer verifies the new files before replacing the current version. If installation is interrupted, run the full installer again in the same folder to recover. Installation errors are recorded in `data\logs\installer.log`. If an update fails during quit after you choose **Later**, Coopanion shows the failed version and the log location the next time it starts.
+
 The Mac version, the deb and the Windows portable version do not update themselves. When a new version is out, a download link appears in the settings window's title bar; download it and install it yourself.
 
 ## Cost and privacy
 
 - **Cost**: Coopanion is free. The model service you choose bills you for usage, which you can see on the Usage & cost page. DeepSeek, OpenAI, Anthropic, Gemini's paid tier and xAI have built-in prices, and amounts can be shown in another currency at the current exchange rate (or a built-in rate when it can't be fetched). When you sign in with ChatGPT, usage counts toward the plan and no cost is shown.
-- **Sent to the model service**: what you say and type, attached images, how you interact with Coo, and screenshots during computer use. Only the service you configured receives them.
-- **Kept on your computer**: API keys and the ChatGPT sign-in, memory, conversation history, settings and logs. Speech is recognized locally; when the current model takes audio, each batch's recording also goes to the model service and is kept in the data folder on your computer, which you can turn off on the Voice input page. If you choose a transcription service on the Voice input page, each sentence's recording goes to that service.
+- **Model requests** send your messages, attached images, interactions with Coo and screenshots taken during computer use to the model service you configure. With multimodal input enabled, Coo Pet Provider includes supported attachments in each request while they remain in context. This can resend earlier screenshots and recordings. If the service rejects the attachments, the provider retries once without them.
+- **Local data** includes API keys, ChatGPT sign-in data, memory, chat history, settings and logs. Speech recognition runs locally by default. If you select a transcription service, it receives the audio for each sentence. With **Voice input → Send the recording** on, recordings sent to an audio-capable model are also saved in the local data folder.
 - **Anonymous usage statistics**: sent to `survey.palailab.org`. They contain the app version, an outline of the system and hardware, which model service and model you use, which extensions are installed, how often and how long you use the app, settings, where in the program a crash happened, and a randomly generated install ID; no conversations, screenshots, keys, error messages or files. Every field is listed in [docs/TELEMETRY.md](docs/TELEMETRY.md). Turn them off under **Habits → General → Usage statistics**.
 - **Other network access**: checking GitHub for new versions (the Windows installer build and the AppImage check at start and every 6 hours while automatic updates are on; the other builds check when the settings window opens); npm and the official extension index on GitHub for the extension market, and GitHub for votes and comments; ModelScope, falling back to Hugging Face, when downloading the speech model.
 
@@ -265,7 +287,7 @@ Right-click the tray icon and choose **Show pet**; if the tray icon is hidden, c
 <details>
 <summary><b>Clicks go straight through Coo</b></summary>
 
-**Let clicks pass through Coo** is on in the tray menu. Click it again to turn it off, or restart Coopanion.
+If the tray menu shows **Stop clicks passing through Coo**, select it to restore clicks. If this happens only while a Windows app is full screen on Coo’s display, turn off **Let clicks pass through Coo** under **Habits → Display → Full screen**. With the default click-through pause key enabled, hold Right Ctrl to click Coo temporarily.
 
 </details>
 
@@ -283,7 +305,7 @@ After 5 failed model requests in a row, Coo tells you what went wrong in a bubbl
 
 - The mic button next to Coo should not be crossed out.
 - Tap Left Alt first, then press and hold it (two presses too far apart don't count).
-- The Voice input page should show the recognizer as ready (click **Download** if the model is missing), and its level meter should move while you speak.
+- The Voice input page should show the recognizer as ready (click **Download** if the model is missing; with **Send the transcript** off and only the recording going, a stopped recognizer is fine), and its level meter should move while you speak.
 - Windows: in Settings → Privacy & security → Microphone, allow desktop apps to use the microphone.
 - Mac: in System Settings → Privacy & Security, turn on Microphone and Input Monitoring for Coopanion, then restart it.
 
@@ -319,9 +341,9 @@ The Chat page has the full record. If something goes wrong, switch to advanced m
 
 ## Community
 
-- QQ Group 4: 1080323271
-- QQ Group 5: 702451490
-- Groups 1 (1080755910), 2 (1129285246) and 3 (1132082279) are full
+- QQ Group 5 (702451490)
+- QQ Group 6 (498403015)
+- Groups 1 (1080755910), 2 (1129285246), 3 (1132082279) and 4 (1080323271) are full.
 - [Discord](https://discord.gg/DR37WB5zJf)
 
 ## Contributing

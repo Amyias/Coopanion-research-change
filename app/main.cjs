@@ -38,13 +38,14 @@
  * system's, handed to the Core as `COOPANION_SYSTEM_LANGUAGE`. The settings window's preload keeps the
  * console in the app language (`settings-preload.cjs`).
  */
-const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, screen, session, shell } = require('electron');
+const { app, crashReporter, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, screen, session, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const { Readable } = require('node:stream');
 const { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs');
 const { delimiter, dirname, extname, join, resolve, sep } = require('node:path');
-const { dataDirIn, locateData, readRecord, writeRecord } = require('./data-dir.cjs');
+const { dataDirIn, locateData, readRecord, samePath, writeRecord } = require('./data-dir.cjs');
+const { readTextFile } = require('./read-text.cjs');
 
 const { readSettingsSize, saveSettingsSize } = require('./settings-size.cjs');
 const { settingsChromeOptions, applySettingsTheme } = require('./settings-chrome.cjs');
@@ -78,7 +79,8 @@ const STEAM = BUILD.channel === 'steam';
 const PORTABLE = BUILD.channel === 'portable';
 const PET_HOST = process.argv.includes('--pet-host');
 /** The Windows installed build, whose data directory data-dir.cjs finds from the program's directory. */
-const INSTALLED = app.isPackaged && process.platform === 'win32' && !STEAM && !PORTABLE && !process.env.CORTICO_COMPANION_DATA;
+const WINDOWS_INSTALL = app.isPackaged && WIN && !STEAM && !PORTABLE;
+const INSTALLED = WINDOWS_INSTALL && !process.env.CORTICO_COMPANION_DATA;
 const PROGRAM_DIR = dirname(process.execPath);
 const BESIDE = join(PROGRAM_DIR, 'data');
 const DATA_RECORD = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Coopanion', 'data-location.json') : null;
@@ -86,6 +88,13 @@ const located = INSTALLED && DATA_RECORD ? locateData({ programDir: PROGRAM_DIR,
 const DATA = process.env.CORTICO_COMPANION_DATA
   || (!app.isPackaged ? join(APP_ROOT, 'build', 'data')
     : MAC || LINUX || STEAM ? join(app.getPath('appData'), 'Coopanion') : located?.use ?? BESIDE);
+
+if (WINDOWS_INSTALL && process.argv.includes('--quit-for-installer')) {
+  app.setPath('userData', DATA);
+  app.requestSingleInstanceLock({ installerQuit: PROGRAM_DIR });
+  app.exit(0);
+  return;
+}
 
 /**
  * Asks which data to use when none is beside the program (data-dir.cjs) and binds the record to this program
@@ -206,6 +215,8 @@ const askStranded = INSTALLED && !PET_HOST && DATA === BESIDE && restoreStranded
 // before anything asks Electron for a path: the single-instance lock and the profile live in userData
 app.setPath('userData', DATA);
 app.setPath('crashDumps', join(DATA, 'Crashpad'));
+// Chromium writes a dump for a process that dies only once the reporter is started; nothing is uploaded
+crashReporter.start({ uploadToServer: false });
 process.env.TEMP = process.env.TMP = process.env.TMPDIR = join(DATA, 'tmp');
 mkdirSync(process.env.TEMP, { recursive: true });
 
@@ -233,6 +244,8 @@ if (located) {
 const { CoreHost } = require('./core-host.cjs');
 const { configuredLanguage, systemLanguage, textOf } = require('./i18n/index.cjs');
 const { RELEASES_URL, canUpdate, startUpdater } = require('./updater.cjs');
+const { takeInstallerFailure } = require('./installer-events.cjs');
+const { watchRenderer } = require(require.resolve('cortico-world-desktop-pet/host/renderer-gone.cjs'));
 /** Steam updates its build, and the portable one is updated by hand: only the others run the updater. */
 const SELF_UPDATE = !STEAM && !PORTABLE && canUpdate();
 
@@ -295,6 +308,8 @@ const core = new CoreHost({
 });
 
 let settings = null;
+/** True while a same-port Core restart reload should leave unsaved edits intact. */
+let preserveUnsavedReload = false;
 /** The route the settings window showed when it was last closed, where it opens next unless asked for another. */
 let settingsRoute = '';
 /** The hash route a settings window shows; the loading page, shown until the Core is up, has none. */
@@ -304,6 +319,7 @@ function shownRoute(win) {
 }
 let tray = null;
 let quitting = false;
+let quittingForInstaller = false;
 /** The quit was asked for from the pet's update bubble: the updated app starts once installed. */
 let restartAfterUpdate = false;
 let updater = null;
@@ -502,6 +518,7 @@ function openSettings(path = '') {
   settings.once('ready-to-show', () => bringForward(settings));
   settings.on('page-title-updated', (e) => e.preventDefault());
   keepOnConsole(settings.webContents);
+  watchRenderer(settings.webContents, { name: '设置窗口', log: (line) => core.warn(line) });
   const win = settings;
   let closing = false;
   win.on('close', () => {
@@ -511,10 +528,16 @@ function openSettings(path = '') {
     const route = shownRoute(win);
     if (route) settingsRoute = route;
   });
+  win.webContents.on('did-start-navigation', (_e, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) preserveUnsavedReload = false;
+  });
   // A page with unsaved edits (a leave guard, console/base/router.ts) refuses to unload: closing the window
-  // then hides it with the edits kept. A load the app starts itself, and a quit, go ahead.
+  // then hides it with the edits kept, and the reload after a Core restart leaves the page as it is. Other
+  // loads the app starts itself, and a quit, go ahead.
   win.webContents.on('will-prevent-unload', (e) => {
-    if (quitting || !closing) { e.preventDefault(); return; }
+    if (quitting) { e.preventDefault(); return; }
+    if (preserveUnsavedReload && !closing) { preserveUnsavedReload = false; return; }
+    if (!closing) { e.preventDefault(); return; }
     closing = false;
     win.hide();
     if (MAC) app.dock?.hide();
@@ -575,7 +598,8 @@ function noteAutostart() {
 
 /**
  * The tray's "click through": every click passes through the pet, which still shows, walks and talks
- * (for a game under it). It lasts for this run of the app and is sent again to a restarted Core.
+ * (for a game under it). The pet's own button sets it too, and the Core says so on `click-through`.
+ * It lasts for this run of the app and is sent again to a restarted Core.
  */
 let clickThrough = false;
 function setClickThrough(on) {
@@ -601,6 +625,7 @@ async function togglePet() {
 // the Core says when the pet window comes onto the desktop or leaves it, from wherever (its menu, the settings
 // window, the tray): the show/hide entry follows, which matters on Linux, where the menu is set beforehand
 core.on('pet-shown', (shown) => { petOnDesktop = shown; refreshTray(); });
+core.on('click-through', (on) => { if (on !== clickThrough) { clickThrough = on; refreshTray(); } });
 
 function trayItems() {
   const t = T(), running = core.state === 'running';
@@ -657,7 +682,14 @@ core.on('ready', ({ language: next }) => {
   followLanguage(next);
   if (clickThrough) void setClickThrough(true);
   // A restarted Core brings the window back to the page it showed (the World page it was restarted from).
-  if (settings) settings.loadURL(settingsUrl(shownRoute(settings)));
+  // On the same port that URL differs from the page's only in its hash, which loadURL would not reload.
+  if (settings) {
+    const next = settingsUrl(shownRoute(settings));
+    if (settings.webContents.getURL().split('#')[0] === next.split('#')[0]) {
+      preserveUnsavedReload = true;
+      settings.webContents.reload();
+    } else settings.loadURL(next);
+  }
   if (updateStep) core.send({ type: 'companion:update', step: updateStep });
 });
 core.on('language', followLanguage);
@@ -675,8 +707,7 @@ core.on('auto-update', (enabled) => {
     },
   });
 });
-// the quit stops the Core and takes the tray icon down before the installer runs; the installer kills a
-// Coopanion still running, which would leave its icon in the notification area
+// Stop the Core and remove the tray icon before the installer takes over.
 core.on('update-install', () => {
   if (!updater?.hasUpdate()) return;
   restartAfterUpdate = true;
@@ -703,7 +734,16 @@ const bringBack = () => {
   if (core.state === 'failed') void core.start();
   else if (core.state === 'running') ensurePet().catch(() => { /* Core went away meanwhile */ });
 };
-app.on('second-instance', bringBack);
+app.on('second-instance', (_event, _argv, _cwd, data) => {
+  if (WINDOWS_INSTALL && typeof data?.installerQuit === 'string') {
+    if (samePath(PROGRAM_DIR, data.installerQuit)) {
+      quittingForInstaller = true;
+      if (!quitting) app.quit();
+    }
+    return;
+  }
+  bringBack();
+});
 // macOS: opening the app again while it runs
 app.on('activate', bringBack);
 app.on('window-all-closed', () => { /* stays in the tray */ });
@@ -715,7 +755,7 @@ app.on('before-quit', (e) => {
   tray = null;
   void core.stop().finally(() => {
     // a downloaded update installs now; its quit comes back here with quitting set and goes through
-    if (updater?.installOnQuit(restartAfterUpdate)) setTimeout(() => app.exit(0), 10_000);
+    if (!quittingForInstaller && updater?.installOnQuit(restartAfterUpdate)) setTimeout(() => app.exit(0), 10_000);
     else app.exit(0);
   });
 });
@@ -760,6 +800,12 @@ app.whenReady().then(() => {
   core.opts.env.COOPANION_SYSTEM_LANGUAGE = system;
   language = configuredLanguage(join(userData, 'home')) ?? system;
   if (askStranded && askRestoreStranded()) return;
+  if (WINDOWS_INSTALL) {
+    const failure = takeInstallerFailure(PROGRAM_DIR);
+    if (failure) void dialog.showMessageBox({
+      type: 'warning', title: 'Coopanion', message: T().installUpdateFailed(failure.version), detail: failure.logFile,
+    });
+  }
   // figure packs from the Workshop: more pack directories for the desktop-pet World (core/companion.ts)
   if (STEAM) core.opts.env.COOPANION_PACK_ROOTS = require('./steam.cjs').workshopPackRoots(BUILD.steamAppId, join(userData, 'logs')).join(delimiter);
   buildTray();

@@ -16,6 +16,9 @@ export default {
   'bubble.imageUnreadable': 'Не удалось прочитать это изображение',
   'bubble.imageTooLarge': 'Это изображение после уменьшения всё ещё больше {mb} МБ',
   'bubble.imagesUnseen': 'Текущая модель не видит изображения; {bot} узнает только, сколько вы их отправили.',
+  /** A typed text past its cap (the count beside it shows the cap); the typing box's while the Chat page takes it. */
+  'bubble.tooLong': 'Лишних: {over}; сократите, чтобы отправить',
+  'bubble.tooLongForBox': 'Лишних: {over}; продолжите в «Чате»',
 
   // what the person said: a sentence being heard; how many images a chat-page message carries
   'heard.more': 'Слушаю…',
@@ -50,9 +53,18 @@ export default {
   'action.soundOff': 'Звуки: выкл. · нажмите, чтобы включить',
   'action.size': 'Размер: {pct} %',
   'action.sizeLabel': 'Размер питомца',
+  'action.fade': "Прозрачность: {pct} %",
+  'action.fadeFullscreen': "Прозрачность в полноэкранном режиме: {pct} %",
+  'action.fadeLabel': "Прозрачность питомца",
+  'action.fadeFullscreenLabel': "Прозрачность питомца в полноэкранном режиме",
+  'action.cuaOn': "Управление компьютером: вкл. · нажмите, чтобы выключить",
+  'action.cuaOffAsk': "Управление компьютером: выкл. · нажмите, чтобы включить в окне настроек",
+  'action.cuaOff': "Управление компьютером: выкл. · нажмите, чтобы включить",
   'action.dress': 'Гардероб',
   'action.worlds': 'Мои World',
   'action.hide': 'Спрятать меня на время (значок в трее вернёт меня)',
+  'action.throughOn': 'Клики сквозь Coo: вкл. · нажмите, чтобы выключить',
+  'action.throughOff': 'Клики сквозь Coo: выкл. · нажмите, чтобы включить (выключить можно в меню трея или здесь, удерживая клавишу паузы пропуска кликов)',
   'menu.cancel': 'Отмена',
   'menu.resume': 'Продолжить',
   'menu.pause': 'Пауза',

@@ -18,12 +18,13 @@ import { worldLibrary, needsRestart, updatePending, type WorldLibraryItem } from
 import { addGroup, arrangeLayout, groupToken, moveGroup, moveItem, readLayout, removeGroup, writeLayout, type WorldGroup, type WorldLayout } from './groups.ts';
 import { S } from './strings.ts';
 import { S as UI } from '../../../base/ui/strings.ts';
-import { measureReflow, prefersStill } from '../../../base/motion.ts';
+import { measureReflow, motionLevel } from '../../../base/motion.ts';
+import { cssMs } from 'cortico-world-desktop-pet/web/motion-frames.js';
 import { dragList, moveGap, settledBox } from '../../../base/drag.ts';
 import { foldText, searchTerms } from '../extensions/search.ts';
 
 const worldPageId = (id: string) => pageIdFor('world', id);
-/** The view switch's duration and curve, as `--world-duration` and `--world-easing` in styles.css. */
+/** The view switch's duration where styles.css does not say (it reads `--world-duration`), and its curve, as `--world-easing`. */
 const VIEW_MS = 290;
 const viewEasing = cubicBezier(.32, .72, 0, 1);
 /** A CSS cubic-bezier timing function, solved for x by Newton's method with a bisection fallback. */
@@ -166,10 +167,22 @@ export function mountWorlds(ctx: FeatureContext): void {
     dockTip.style.top = `${Math.max(8, Math.min(target.top + target.height / 2 - tip.height / 2, doc.documentElement.clientHeight - tip.height - 8))}px`;
   }
   doc.addEventListener('scroll', hideTip, { capture: true, passive: true, signal });
-  const reduceMotion = () => prefersStill(win);
+  const reduceMotion = () => motionLevel(win) === 'low';
   let transition: Animation | undefined;
   let viewGeneration = 0;
   lifecycle.add(() => transition?.cancel());
+  // While the window is being resized (`data-resizing`, until 150ms after the last size change) the rows
+  // take each size at once: a row still easing to its old width is cut off by the new layout.
+  if (typeof win.ResizeObserver === 'function') {
+    let resizeTimer = 0, measured = false;
+    const resizing = new win.ResizeObserver(() => {
+      if (!measured) { measured = true; return; }
+      workspace.dataset.resizing = ''; win.clearTimeout(resizeTimer);
+      resizeTimer = win.setTimeout(() => { delete workspace.dataset.resizing; }, 150);
+    });
+    resizing.observe(workspace);
+    lifecycle.add(() => { resizing.disconnect(); win.clearTimeout(resizeTimer); });
+  }
   const show = () => {
     if (signal.aborted || router.route.segments[0] !== 'world') return;
     const next = canBrowse && router.route.query.view === 'market' ? 'market' : 'mine';
@@ -196,7 +209,7 @@ export function mountWorlds(ctx: FeatureContext): void {
         const own = anchor.getAnimations?.().find(animation => (animation as CSSTransition).transitionProperty === 'height');
         if (own) seen = true;
         // Waiting for the transition to start holds still; once it has run and gone, the glide ends.
-        const waited = now - start, clock = Math.min(1, Math.max(0, waited - 80) / VIEW_MS);
+        const waited = now - start, clock = Math.min(1, Math.max(0, waited - 80) / cssMs(workspace, '--world-duration', VIEW_MS));
         const progress = own ? own.effect?.getComputedTiming().progress ?? 0 : seen ? 1 : viewEasing(clock);
         const done = !own && (seen || clock >= 1);
         railList.scrollTop = glideFrom + (to - glideFrom) * (done ? 1 : progress);
@@ -313,8 +326,12 @@ export function mountWorlds(ctx: FeatureContext): void {
     const entry = node.parentElement!, face = node.querySelector<HTMLElement>('.world-avatar')!;
     const height = entry.getBoundingClientRect().height;
     entry.animate?.([{ height: '0px', minHeight: '0px', marginBottom: '0px', opacity: 0 }, { height: `${height}px`, minHeight: `${height}px`, opacity: 1 }], { duration: 180, easing: 'cubic-bezier(.32,.72,0,1)' });
-    const pop = () => face.animate?.([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: .6 }, { transform: 'scale(1)' }], { duration: 270, easing: 'cubic-bezier(.32,.72,0,1)' });
-    if (!from || current !== 'market' || !face.animate) { pop(); return; }
+    // the flight and the pop past full size are full motion only; below it the avatar grows in where it lands
+    const full = motionLevel(win) === 'high';
+    const pop = () => face.animate?.(full
+      ? [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: .6 }, { transform: 'scale(1)' }]
+      : [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 270, easing: 'cubic-bezier(.32,.72,0,1)' });
+    if (!from || current !== 'market' || !face.animate || !full) { pop(); return; }
     const to = face.getBoundingClientRect();
     const ghost = face.cloneNode(true) as HTMLElement; ghost.classList.add('world-avatar-ghost');
     Object.assign(ghost.style, { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px` });
@@ -485,7 +502,12 @@ export function mountWorlds(ctx: FeatureContext): void {
   let dropAt: { group: string | null; before: string | null; head?: HTMLElement } | undefined;
   let gap: HTMLElement | undefined;
   const tokenOf = (el: Element | null): string | null => !el ? null : el.classList.contains('world-group') ? groupToken((el as HTMLElement).dataset.group!) : (el as HTMLElement).dataset.key ?? null;
-  const nextToken = (el: Element) => tokenOf(el.nextElementSibling);
+  /** The row or group after `el`, past the dragged element's own empty place and any ghost or placeholder. */
+  const nextToken = (el: Element) => {
+    let next = el.nextElementSibling;
+    while (next && (next.classList.contains('is-dragging') || next.classList.contains('motion-ghost') || next.classList.contains('placeholder'))) next = next.nextElementSibling;
+    return tokenOf(next);
+  };
   const elementOf = (token: string): HTMLElement | undefined => token.startsWith('group:') ? groupNodes.get(token.slice('group:'.length))?.el : railNodes.get(token)?.parentElement ?? undefined;
   function clearDrop() {
     dropAt = undefined;
@@ -494,6 +516,9 @@ export function mountWorlds(ctx: FeatureContext): void {
   /** Where a drop at `y` would land; the empty place moves there. */
   function locateDrop(y: number) {
     if (!dragging) return;
+    // Over its own empty place the target stays where the last one put it: read again from the rows beside
+    // the place, it would flip between a row and a group while the pointer stays still.
+    if (gap?.offsetParent && dropAt) { const r = settledBox(gap); if (y >= r.top && y <= r.bottom) return; }
     clearDrop();
     const shown = (el: Element): el is HTMLElement => (el as HTMLElement).offsetParent !== null && !el.classList.contains('is-dragging');
     if (dragging.kind === 'item') {
@@ -503,8 +528,24 @@ export function mountWorlds(ctx: FeatureContext): void {
       if (!head && first && y < settledBox(first).top) { dropAt = { group: null, before: tokenOf(first) }; placeGap(); return; }
       if (head) { const group = layout?.groups[head.dataset.group!]; dropAt = { group: head.dataset.group!, before: group?.items.find(key => key !== (dragging as { key: string }).key) ?? null, head }; head.classList.add('is-drop-target'); placeGap(); return; }
       const rows = [...readyList.querySelectorAll<HTMLElement>('.world-library-entry:not(.motion-ghost)')].filter(el => shown(el) && !el.closest('.world-group.is-collapsed'));
-      const over = rows.find(el => { const r = settledBox(el); return y >= r.top && y <= r.bottom; }) ?? rows.find(el => settledBox(el).top > y);
-      if (!over) { dropAt = { group: null, before: null }; placeGap(); return; }
+      let over = rows.find(el => { const r = settledBox(el); return y >= r.top && y <= r.bottom; });
+      if (!over) {
+        // In an open group's own padding (under its header, under its last row) the row joins that group,
+        // before the next row of it or at its end.
+        const inside = [...groupNodes.values()].find(node => !node.el.classList.contains('is-collapsed') && shown(node.el) && (r => y >= r.top && y <= r.bottom)(settledBox(node.el)));
+        if (inside) {
+          const next = rows.find(el => inside.list.contains(el) && settledBox(el).top > y);
+          dropAt = { group: inside.el.dataset.group!, before: next?.dataset.key ?? null, head: inside.head };
+          inside.head.classList.add('is-drop-target'); placeGap(); return;
+        }
+        // Between boxes the row lands before whatever comes next, a group's header included, so the margin
+        // above a group puts it before that group.
+        const heads = [...groupNodes.values()].map(node => node.head).filter(shown);
+        const next = [...rows, ...heads].map(el => ({ el, top: settledBox(el).top })).filter(c => c.top > y).sort((a, b) => a.top - b.top)[0]?.el;
+        if (!next) { dropAt = { group: null, before: null }; placeGap(); return; }
+        if (next.classList.contains('world-group-head')) { dropAt = { group: null, before: groupToken(next.dataset.group!) }; placeGap(); return; }
+        over = next;
+      }
       const r = settledBox(over), after = y > r.top + r.height / 2 && y <= r.bottom;
       const groupEl = over.parentElement!.classList.contains('world-group-list') ? over.parentElement!.parentElement as HTMLElement : null;
       dropAt = { group: groupEl?.dataset.group ?? null, before: after ? nextToken(over) : over.dataset.key! };
@@ -538,6 +579,9 @@ export function mountWorlds(ctx: FeatureContext): void {
     lifted(el) {
       gap = el; hideTip();
       dragging = el.classList.contains('world-group') ? { kind: 'group', id: el.dataset.group! } : { kind: 'item', key: el.dataset.key! };
+      // Until the pointer leaves its place, the element would land where it was.
+      const list = el.parentElement!;
+      dropAt = { group: list.classList.contains('world-group-list') ? (list.parentElement as HTMLElement).dataset.group! : null, before: nextToken(el) };
     },
     locate: locateDrop,
     drop(el, copyTop) {
@@ -575,7 +619,7 @@ export function mountWorlds(ctx: FeatureContext): void {
         node.dataset.key = item.key; railNodes.set(item.key, node);
       }
       node.querySelector('.world-library-label')!.textContent = item.label.replace(/^cortico-world-/, '');
-      node.setAttribute('aria-label', item.label); node.setAttribute('aria-current', item.key === selected ? 'true' : 'false');
+      node.setAttribute('aria-label', item.label); node.title = item.label; node.setAttribute('aria-current', item.key === selected ? 'true' : 'false');
       const row = worldRow(item); row.inert = current === 'market';
       let entry = node.parentElement;
       if (!entry) { entry = ui.h('div', 'world-library-entry'); entry.append(node, row); }

@@ -18,7 +18,7 @@ import { intro as pageIntro } from '../intro.ts';
 import { ACTIVITY_CONTEXT_DAYS, renderActivity } from './activity.ts';
 import { bucketLabel, renderChart } from './chart.ts';
 import { U_TYPES, themeColorResolver } from './labels.ts';
-import { usageQuery } from './range.ts';
+import { bucketFits, MAX_BUCKETS, rangeDays, usageQuery } from './range.ts';
 import { createUsageState } from './state.ts';
 import { S } from './strings.ts';
 import { createUsageTip } from './tooltip.ts';
@@ -206,6 +206,22 @@ export function mountUsage(ctx: PageContext): void {
     onSelect: (v) => { state.bucket = v as UsageBucketOption; void load(); },
   });
   bucketSeg.el.classList.add('uswitch');
+  /**
+   * Greys the granularities that would draw more than MAX_BUCKETS bars over the range. A pick that no longer
+   * fits moves to the finest one that does.
+   */
+  function fitBuckets(): void {
+    const span = rangeDays(state.days, { from: state.from, to: state.to });
+    BUCKETS.forEach(({ value }, i) => {
+      const button = bucketSeg.el.children[i] as HTMLButtonElement;
+      const fits = bucketFits(value, span);
+      button.disabled = !fits;
+      button.title = fits ? '' : S.bucketTooFine(MAX_BUCKETS);
+    });
+    if (bucketFits(state.bucket, span)) return;
+    state.bucket = BUCKETS.find(({ value }) => value !== 'auto' && bucketFits(value, span))?.value ?? 'auto';
+    bucketSeg.setValue(state.bucket);
+  }
   // 拆分维度可多选：同一组按钮，按下的高亮。
   const splitWrap = ui.h('div', 'segwrap sm umulti');
   const splitBtns = SPLITS.map(({ dim, label }) => {
@@ -239,6 +255,7 @@ export function mountUsage(ctx: PageContext): void {
     role: ui.table({ head: [S.dimRole, ...GROUP_HEAD] }),
     model: ui.table({ head: [S.dimModel, ...GROUP_HEAD] }),
     instance: ui.table({ head: [S.dimInstance, ...GROUP_HEAD] }),
+    world: ui.table({ head: [S.dimWorld, ...GROUP_HEAD] }),
   };
   type GroupKey = keyof typeof groupTables;
   const tableBox = ui.h('div');
@@ -263,6 +280,7 @@ export function mountUsage(ctx: PageContext): void {
     { value: 'role', label: S.byRole },
     { value: 'model', label: S.byModel },
     { value: 'instance', label: S.byInstance },
+    { value: 'world', label: S.byWorld },
   ], { size: 'sm', value: 'role', onSelect: (v) => showGroup(v as GroupKey) });
   groupSeg.el.classList.add('uswitch');
   headActions(ui, breakdown, groupSeg.el);
@@ -279,13 +297,13 @@ export function mountUsage(ctx: PageContext): void {
     const calls = state.metric === 'calls';
     for (const { dim, btn } of splitBtns) if (dim === 'type') btn.disabled = calls;
     if (!state.data) return;
-    const unpriced = state.data.totals?.unpricedCalls || 0;
-    mainNote.textContent = state.metric === 'cost' && unpriced > 0 ? S.compUnpriced(unpriced) : '';
     renderChart(
       { doc, ui, box: mainBox, legend: mainLegend, tip, color },
       state.data,
       { metric: state.metric, dims: state.splitDims, allowType: !calls, sort: state.sortByShare },
     );
+    const unpriced = state.data.totals?.unpricedCalls || 0;
+    mainNote.textContent = state.metric === 'cost' && unpriced > 0 ? S.compUnpriced(unpriced) : '';
   }
 
   function renderCards(d: UsageAggregate): void {
@@ -339,7 +357,6 @@ export function mountUsage(ctx: PageContext): void {
 
   /** 一条横条加图例；没有已知成本时整行收起，原因写在图下。 */
   function renderComposition(d: UsageAggregate): void {
-    compBox.replaceChildren();
     const cur = d.currency || 'USD';
     const t: Partial<UsageGroupStat> = d.totals || {};
     const total = t.cost || 0;
@@ -382,7 +399,7 @@ export function mountUsage(ctx: PageContext): void {
       );
       leg.appendChild(it);
     }
-    compBox.append(ui.h('span', 'ulabel', S.compTitle), bar, leg);
+    compBox.replaceChildren(ui.h('span', 'ulabel', S.compTitle), bar, leg);
   }
 
   /**
@@ -476,7 +493,17 @@ export function mountUsage(ctx: PageContext): void {
     renderGroup(groupTables.role, d.byRole || [], cur);
     renderGroup(groupTables.model, d.byModel || [], cur);
     renderGroup(groupTables.instance, d.byInstance || [], cur);
+    renderWorlds(d);
     renderMain();
+  }
+
+  /** World id 到 /api/worlds 给的显示名;不在清单里的(已删除的 World)首列只印 id。 */
+  let worldLabels = new Map<string, string>();
+  /** 按 World 一表，末行是未归属。 */
+  function renderWorlds(d: UsageAggregate): void {
+    const worlds = (d.byWorld || []).map((g) => ({ ...g, label: worldLabels.get(g.key) }));
+    const unattributed = d.unattributed?.calls ? [{ ...d.unattributed, key: S.unattributed }] : [];
+    renderGroup(groupTables.world, [...worlds, ...unattributed], d.currency || 'USD');
   }
 
   // ---- 取数 -----------------------------------------------------------------
@@ -490,6 +517,7 @@ export function mountUsage(ctx: PageContext): void {
   /** 主数据按所选粒度分桶；dailyTokenDays 提供活跃度图的每日用量。 */
   async function load(): Promise<void> {
     const mine = ++generation;
+    fitBuckets();
     const extra = `&basis=${basis}&currency=${encodeURIComponent(currency)}&dailyTokenDays=${ACTIVITY_CONTEXT_DAYS}`;
     try {
       const d = await get<UsageAggregate>(
@@ -557,6 +585,11 @@ export function mountUsage(ctx: PageContext): void {
   compBox.hidden = true;
   cards.appendChild(ui.placeholder(S.loading));
   void load();
+  // 读不到清单时 World 一表照样按 id 列出。
+  void get<{ worlds?: Array<{ id: string; label?: string }> }>('/api/worlds', { signal: ctx.signal }).then((data) => {
+    worldLabels = new Map((data.worlds ?? []).flatMap((world) => (world.label ? [[world.id, world.label] as const] : [])));
+    if (state.data) renderWorlds(state.data);
+  }, () => {});
 }
 
 export const usagePage: Page = {

@@ -17,7 +17,7 @@ import { S } from './strings.ts';
 import { sharedTemplate } from './titles.ts';
 import { fitVariableChips, variablePopup } from './variables.ts';
 import type { PromptDoc } from './view.ts';
-import { prefersStill } from '../../../base/motion.ts';
+import { motionLevel } from '../../../base/motion.ts';
 
 interface PrefixSegment { title: string; text: string; sourceKey?: string }
 interface Section {
@@ -115,7 +115,7 @@ export async function mountPrompts(ctx: FeatureContext): Promise<void> {
     editor.setCollapsed(index, !expanded);
   }
   function animateSection(section: Section, index: number): void {
-    if (section.collapsed || prefersStill(window)) return;
+    if (section.collapsed || motionLevel(window) === 'low') return;
     const targets = host.querySelectorAll(`[data-prompt-section="${index}"]`);
     for (const target of [...targets, section.vars]) {
       target.getAnimations().forEach((animation) => animation.cancel());
@@ -240,8 +240,12 @@ export async function mountPrompts(ctx: FeatureContext): Promise<void> {
       button.focus({ preventScroll: true });
     }
   }
-  /** Set once the person has already accepted losing unsaved edits for the navigation under way. */
-  ctx.lifecycle.own(ctx.router.addLeaveGuard(() => (dirty.size || savePromise) ? S.leaveUnsaved : null));
+  ctx.lifecycle.own(ctx.router.addLeaveGuard(() => {
+    if (!dirty.size) return null;
+    // the sections by the names their labels show
+    const names = [...dirty.keys()].map((key) => { const section = sections.find((s) => s.doc?.key === key); return section ? description(section.segment, section.doc).title : docs.get(key)?.title ?? key; });
+    return S.leaveUnsavedNamed(names.join(S.listSep));
+  }));
   root.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey) || event.defaultPrevented) return;
     const key = event.key.toLowerCase();

@@ -22,8 +22,8 @@
  * process (tray menu, settings window), to the pet's pages, and to the settings window's colour scheme names.
  * `companion.autoUpdate` is sent to the main process at load and on change (`update-settings.ts`).
  *
- * The settings window's colours follow the pet's look (`console-theme.ts`): at start and whenever the
- * dressing page saves one.
+ * The settings window's colours follow the pet's look (`console-theme.ts`) whenever the dressing page
+ * saves one; a start keeps the saved scheme.
  *
  * First start writes the files in `seed.ts`; after that every value is the operator's, edited in
  * the console. While the active endpoint has no key, event delivery starts paused. The first start
@@ -39,6 +39,7 @@
  * route, `{ type: 'companion:browse', url }` to open the ChatGPT sign-in page in the system browser,
  * `{ type: 'companion:hide' }` to put it away (the introduction runs again on the desktop),
  * `{ type: 'companion:pet-shown', shown }` when the pet window comes onto the desktop or leaves it,
+ * `{ type: 'companion:click-through', on }` when click-through is turned on or off, the pet's own button included,
  * and `{ type: 'companion:quit' }` to quit the whole app; it asks for a clean stop with
  * `{ type: 'companion:shutdown' }`. A start that cannot go on says why before it exits:
  * `{ type: 'companion:locked', pid, file }` when another process holds the data directory, and
@@ -68,8 +69,8 @@ import { WEBSEARCH } from 'cortico/worlds/websearch/definition.ts';
 import { desktopPetDefinition, figurePacks, type DesktopPetWorld, type PetDialogHandle } from 'cortico-world-desktop-pet';
 import COO, { CHATGPT, CHATGPT_PROVIDER, signedIn, usageLimited, vendorOf } from 'cortico-provider-coo';
 import { appWebUiAsset, bundledWebUiAssets } from './bundled-panels.ts';
-import { followPetLook } from './console-theme.ts';
-import { askForKey, guideDone, markDone, runGuide, type GuideDeps } from './guide.ts';
+import { followPetLook, refreshFigureSchemes } from './console-theme.ts';
+import { askForKey, guideDone, runGuide, type GuideDeps } from './guide.ts';
 import { NOTICE_ID, noticeDefinition, type NoticeWorld } from './notice.ts';
 import { coreText } from './i18n/index.ts';
 import { petToolDescriber } from './pet-status.ts';
@@ -373,8 +374,8 @@ function snapshotOf(config: CoreConfig, workspace: string, git: () => boolean): 
     hoverButtons: at('worlds.desktop-pet.hoverButtons'),
     doubleClickChat: at('worlds.desktop-pet.doubleClickChat'),
     rememberPosition: at('worlds.desktop-pet.rememberPosition'),
-    // empty is the app language's default; the others were the defaults of earlier versions
-    userNamed: !['', '伙伴', '主人'].includes(String(at('worlds.desktop-pet.user') ?? '')),
+    // empty is the app language's default; 伙伴 was the default up to 0.1.19
+    userNamed: !['', '伙伴'].includes(String(at('worlds.desktop-pet.user') ?? '')),
     cuaEnabled: at('worlds.desktop-pet.cua.enabled'),
     cuaLevel: at('worlds.desktop-pet.cua.permission'),
     persona: personaOf(workspace) ?? 'custom',
@@ -395,14 +396,12 @@ function reportedExtensions(extensions: ExtensionSet): Array<{ name: string; ver
 }
 
 /**
- * The introduction on a first start, then the key asks while no key is set. An install that already
- * has a key (one from before the introduction existed) counts as introduced. When no pet page shows
+ * The introduction on a first start, then the key asks while no key is set. When no pet page shows
  * up on a first start, the settings window opens at the home page instead, since nothing else would
  * tell the person why Coo stays silent.
  */
 async function introduce(deps: GuideDeps, run: (deps: GuideDeps) => Promise<void>, keySet: () => boolean, talked: (() => boolean) | null): Promise<void> {
   const first = !guideDone(deps.doneFile);
-  if (first && keySet()) { markDone(deps.doneFile); return; }
   if (first) {
     const deadline = Date.now() + PET_WAIT_MS;
     while (!deps.pet()?.petState().connected && Date.now() < deadline) await sleep(1000);
@@ -482,6 +481,7 @@ export async function main(): Promise<void> {
     language,
     onCreate: (world) => { pet = world; },
     onDesktopChange: (shown) => process.send?.({ type: 'companion:pet-shown', shown }),
+    onClickThroughChange: (on) => process.send?.({ type: 'companion:click-through', on }),
     onCuaAnswer: (answer) => {
       telemetry?.count('cuaAsked');
       if (answer === 'yes') telemetry?.count('cuaGranted');
@@ -585,11 +585,11 @@ export async function main(): Promise<void> {
     followPersonaLanguage(loaded.memoryDir, next);
     process.send?.({ type: 'companion:language', language: next });
     (pet as DesktopPetWorld | null)?.refresh();
-    followPetLook(deployDir, getByPath(loaded.config as unknown as Record<string, unknown>, 'worlds.desktop-pet.skin') as { figure?: string; scheme?: string } | undefined,
+    refreshFigureSchemes(deployDir, getByPath(loaded.config as unknown as Record<string, unknown>, 'worlds.desktop-pet.skin') as { figure?: string; scheme?: string } | undefined,
       (pet as DesktopPetWorld | null)?.packs() ?? [], next);
   });
   announceDataDir(loaded.dataDir);
-  followPetLook(deployDir, getByPath(loaded.config as unknown as Record<string, unknown>, 'worlds.desktop-pet.skin') as { figure?: string; scheme?: string } | undefined,
+  refreshFigureSchemes(deployDir, getByPath(loaded.config as unknown as Record<string, unknown>, 'worlds.desktop-pet.skin') as { figure?: string; scheme?: string } | undefined,
     figurePacks([join(loaded.dataDir, 'figures'), ...packRoots]).packs, language());
   consumeBootFlags(loaded.dataDir);
 

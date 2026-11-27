@@ -6,7 +6,10 @@
 
 import type { WebUi } from 'cortico/web/shared/client-panel.ts';
 import { LANGUAGE } from '../../base/language.ts';
+import { cssEasing, motionLevel } from '../../base/motion.ts';
+import { groundColor } from './chart.ts';
 import { S } from './strings.ts';
+import { cssMs } from 'cortico-world-desktop-pet/web/motion-frames.js';
 import type { UsageTip } from './tooltip.ts';
 import type { UsageDailyTokens } from './types.ts';
 
@@ -21,7 +24,7 @@ const MONTH_GAP = 3;
 /** 换范围时着色/褪色依次扫过各列，每列的延迟与整段扫过的上限（ms）。 */
 const SWEEP_STEP_MS = 18;
 const SWEEP_MAX_MS = 600;
-/** 单个格子着色/褪色的时长，与 cost.css 中 .ucell 的 opacity / filter 过渡一致。 */
+/** 单个格子着色/褪色的时长：读 cost.css 的 `--sweep-fade`（.ucell 的 opacity / filter 过渡），读不到时用这个。 */
 const SWEEP_FADE_MS = 240;
 
 export interface ActivityDeps {
@@ -44,6 +47,11 @@ function level(value: number, max: number): number {
   return value > 0 ? Math.min(4, Math.ceil((value / max) * 4)) : 0;
 }
 
+/** Which of `count` cells along a line `size` px long holds `at`, a gap going half to each side. */
+function along(at: number, size: number, count: number): number {
+  return Math.min(count - 1, Math.max(0, Math.floor(((at + GAP / 2) * count) / (size + GAP))));
+}
+
 /**
  * 动效：`'enter'` 格子按列依次出现，用于页面首次画出；给出上一个范围时，进入范围的日子从右往左依次
  * 着色，离开范围的从左往右依次褪色；`null` 直接画出（刷新、改窗宽）。
@@ -53,9 +61,8 @@ export type ActivityMotion = 'enter' | ActivityRange | null;
 /** `daily` 是请求带 `dailyTokenDays=ACTIVITY_CONTEXT_DAYS` 时 `/api/usage` 给的 `dailyTokens`。 */
 export function renderActivity(deps: ActivityDeps, daily: readonly UsageDailyTokens[], range: ActivityRange, motion: ActivityMotion): void {
   const { ui, box, tip } = deps;
-  box.replaceChildren();
   if (!daily.length) {
-    box.appendChild(ui.placeholder(S.noCalls));
+    box.replaceChildren(ui.placeholder(S.noCalls));
     return;
   }
   const tokens = new Map(daily.map((p) => [p.day, p.tokens]));
@@ -112,6 +119,8 @@ export function renderActivity(deps: ActivityDeps, daily: readonly UsageDailyTok
     months.appendChild(label);
   }
 
+  const wrap = ui.h('div', 'uactivity');
+  wrap.style.setProperty('--cols', String(cols));
   const legend = ui.h('div', 'ulegend');
   legend.append(ui.h('span', null, S.less));
   for (let i = 0; i <= 4; i++) {
@@ -121,20 +130,53 @@ export function renderActivity(deps: ActivityDeps, daily: readonly UsageDailyTok
   }
   legend.append(ui.h('span', null, S.more));
 
+  // The spotlight, as on the usage chart: the grid fades as one layer (cost.css), and the pointed cell is a
+  // copy on a layer of its own that grows and glows, so a move of the pointer repaints the copy alone.
+  const still = motionLevel(box.ownerDocument.defaultView) === 'low' || typeof wrap.animate !== 'function';
+  const up: Keyframe = { opacity: 1, transform: 'scale(1.7)' };
+  const down: Keyframe = { opacity: 0, transform: 'scale(1)' };
+  let ground: string | undefined;
+  let lit: { cell: HTMLElement; el: HTMLElement } | undefined;
+  const raise = (cell: HTMLElement | null): void => {
+    if (cell === (lit?.cell ?? null)) return;
+    if (lit) {
+      const { el } = lit;
+      const done = (): void => el.remove();
+      if (still) done();
+      else el.animate([up, down], { duration: 200, easing: 'ease-out', fill: 'forwards' }).finished.then(done, done);
+    }
+    lit = undefined;
+    if (!cell) return;
+    const el = ui.h('div', cell.classList.contains('is-dim') ? 'ulift is-dim' : 'ulift');
+    const copy = ui.h('span', 'ucell');
+    copy.dataset.level = cell.dataset.level;
+    el.appendChild(copy);
+    // the copy sits on the background, so the faded cell under it does not show through its tint
+    el.style.cssText = `left:${cell.offsetLeft}px;top:${cell.offsetTop}px;width:${cell.offsetWidth}px;height:${cell.offsetHeight}px;background:${ground ??= groundColor(box)}`;
+    wrap.appendChild(el);
+    lit = { cell, el };
+    if (still) Object.assign(el.style, up);
+    else el.animate([down, up], { duration: 260, easing: cssEasing(box.ownerDocument.defaultView, '--motion-pop', 'cubic-bezier(.34, 1.56, .64, 1)'), fill: 'forwards' });
+  };
+
+  // The pointed cell comes from the pointer's position, a gap going to the nearer cell, so crossing a gap
+  // keeps the lift and the tip.
   const point = (ev: MouseEvent): void => {
-    const cell = (ev.target as Element | null)?.closest<HTMLElement>('.ucell[data-day]');
+    const area = grid.getBoundingClientRect();
+    const c = along(ev.clientX - area.left, area.width, cols);
+    const r = along(ev.clientY - area.top, area.height, 7);
+    const at = grid.children[c * 7 + r] as HTMLElement | undefined;
+    const cell = at?.dataset.day ? at : null;
+    raise(cell);
     if (!cell) { tip.hide(); return; }
     const value = Number(cell.dataset.value).toLocaleString();
     tip.show(`<div class="tt-h">${cell.dataset.day}</div><div class="tt-tot">${value} token</div>`, cell.dataset.day!);
     tip.move(ev);
   };
   grid.addEventListener('mousemove', point);
-  grid.addEventListener('mouseleave', () => tip.hide());
-
-  const wrap = ui.h('div', 'uactivity');
-  wrap.style.setProperty('--cols', String(cols));
+  grid.addEventListener('mouseleave', () => { raise(null); tip.hide(); });
   wrap.append(grid, months, legend);
-  box.appendChild(wrap);
+  box.replaceChildren(wrap);
   if (!shifts.length) return;
   const gain = shifts.filter((s) => !s.dim).map((s) => s.col);
   const lose = shifts.filter((s) => s.dim).map((s) => s.col);
@@ -152,5 +194,5 @@ export function renderActivity(deps: ActivityDeps, daily: readonly UsageDailyTok
   // 延迟只给这一次切换；扫完后清掉，悬停的过渡照常立即开始。
   box.ownerDocument.defaultView?.setTimeout(() => {
     for (const { cell } of shifts) cell.style.transitionDelay = '';
-  }, longest + SWEEP_FADE_MS);
+  }, longest + cssMs(grid, '--sweep-fade', SWEEP_FADE_MS));
 }

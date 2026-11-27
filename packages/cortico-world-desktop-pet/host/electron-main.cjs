@@ -31,6 +31,10 @@ const { createOverlaySource } = require('./overlay.cjs');
 const { capturePortrait } = require('./portrait.cjs');
 const { createWindowSource, ledgesFrom, windowsFrom } = require('./windows.cjs');
 const { createAppStoreRule } = require('./app-store.cjs');
+const { watchRenderer } = require('./renderer-gone.cjs');
+
+/** A line the World logs as a warning (src/window-host.ts); other lines of this process are logged at debug. */
+const warn = (line) => console.log(`[warn] ${line}`);
 
 /** The pages' text table of `code`, falling back as web/i18n.js does. */
 async function pageText(code) {
@@ -56,6 +60,8 @@ const WINDOWS_EVERY_MS = 700;
 const FOREGROUND_EVERY_MS = 200;
 /** Most pixels one backdrop sample returns. */
 const BACKDROP_SAMPLES = 1500;
+/** The Windows message a window gets when the scale of its display changes. */
+const WM_DPICHANGED = 0x02e0;
 /**
  * Whether the desktop is GNOME, by XDG_CURRENT_DESKTOP, XDG_SESSION_DESKTOP or DESKTOP_SESSION. There the pet
  * window is a dock window: mutter's window_would_be_covered() refuses focus to every new window that an
@@ -345,17 +351,22 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   let displayId = null;
   /** The settings, and whether the first is what hid the window. */
   let hideWhenFullscreen = false, autoHidden = false, passWhenFullscreen = false;
+  /** The setting that fades the pet during full screen, and whether it holds now, as last told to the page. */
+  let fadeWhenFullscreen = false, fullscreenFaded = false;
   /** The setting: the window reaches down over a taskbar at the bottom (see coverArea). */
   let overTaskbar = true;
-  /** Every click passes through while the tray says so or the second setting meets a fullscreen window. */
-  let trayThrough = false, fullscreenThrough = false;
-  const lockMouse = () => mouse.lock(trayThrough || fullscreenThrough);
+  /**
+   * Every click passes through while the tray says so or the second setting meets a fullscreen window,
+   * except while the page lends them to the pet (the click-through pause key held, the typing box open).
+   */
+  let trayThrough = false, fullscreenThrough = false, clicksLent = false;
+  const lockMouse = () => mouse.lock((trayThrough || fullscreenThrough) && !clicksLent);
   // the other windows, read only while the page asks (its body's pack needs them) and sent when they change:
   // their tops, and the whole windows with their ids, order and foreground flag
   const windows = createWindowSource({ screen });
   let windowTimer = null, sentWindows = '';
   const readWindows = () => {
-    if (!win || !win.isVisible()) return;
+    if (!win || !win.isVisible() || win.webContents.isCrashed()) return;
     const rects = windows.list(hwndOf(win));
     const b = win.getBounds();
     // the page's floor: 2 DIP above the bottom of the work area (web/pet-app.js floorGap)
@@ -376,16 +387,17 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   /** The display the window belongs on: the one it was moved to, or the primary display once that one is gone. */
   const display = () => screen.getAllDisplays().find((d) => d.id === displayId) ?? screen.getPrimaryDisplay();
 
-  /** Moves the window over display `d`; returns the area it now covers. */
-  const cover = (d) => {
+  /** Moves the window over display `d`; returns the area it now covers. `reset`: see rescaled below. */
+  const cover = (d, reset = false) => {
     const from = screen.getDisplayMatching(win.getBounds());
     displayId = d.id;
     const area = coverArea(d, overTaskbar), { below, ...rect } = area;
     // Windows: setBounds converts the rect with the scale of the display the window is on. Onto a
     // display with another scale the window comes out sized for the old one, can reach back over it
     // and stay counted on it, so setting the rect again changes nothing. A 1x1 window at the new
-    // origin lies wholly on the new display, and the rect set after it holds.
-    if (process.platform === 'win32' && from.id !== d.id && from.scaleFactor !== d.scaleFactor) {
+    // origin lies wholly on the new display, and the rect set after it holds. The same goes for a new
+    // scale on the window's own display.
+    if (process.platform === 'win32' && (reset || (from.id !== d.id && from.scaleFactor !== d.scaleFactor))) {
       win.setBounds({ x: rect.x, y: rect.y, width: 1, height: 1 });
     }
     win.setBounds(rect);
@@ -395,6 +407,21 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   };
 
   const place = () => { if (win) cover(display()); };
+
+  /**
+   * Windows: when the scale of the window's display changes, the window resizes itself to the rect
+   * WM_DPICHANGED suggests (its size times the ratio of the two scales), and setBounds changes nothing
+   * until display-metrics-changed has also come for the new scale. Whichever of the two comes last
+   * places the window again. `metricsScale`: the scale display-metrics-changed last saw.
+   */
+  let metricsScale = null, dpiChanged = false;
+  const rescaled = (from) => {
+    if (from === 'dpi') dpiChanged = true;
+    else metricsScale = display().scaleFactor;
+    if (!dpiChanged || metricsScale !== display().scaleFactor) { if (from === 'metrics') place(); return; }
+    dpiChanged = false;
+    setTimeout(() => { if (win) cover(display(), true); }, 0);
+  };
 
   /**
    * A hand showed or hid the window, so the fullscreen rule no longer owns it: a manual show while
@@ -429,6 +456,10 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     win.setIgnoreMouseEvents(true, { forward: FORWARD_MOVES });
     guard(win.webContents);
     win.once('ready-to-show', () => win.showInactive());
+    if (process.platform === 'win32') {
+      metricsScale = display().scaleFactor;
+      win.hookWindowMessage(WM_DPICHANGED, () => rescaled('dpi'));
+    }
     // The page cannot tell for itself that it is hidden (background throttling is off, so it always reads as
     // visible and keeps getting frames): the window tells it, so it stops drawing, and for the settings window's
     // 「在桌面上 / 已隐藏」.
@@ -443,7 +474,10 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     // a page loaded afresh asks for the windows again once its body is on
     win.webContents.on('did-finish-load', () => {
       win.webContents.setZoomLevel(0); overlay.pageLoaded(); watchWindows(false); win.webContents.send('pet:floor', coverArea(display(), overTaskbar).below);
+      // a page loaded afresh lends no clicks until it says so
+      if (clicksLent) { clicksLent = false; lockMouse(); }
       win.webContents.send('pet:fullscreenThrough', fullscreenThrough);
+      win.webContents.send('pet:fullscreenFade', fullscreenFaded);
       if (shape) win.webContents.send('pet:inputShape', true);
     });
     // The page learns where the cursor is even when the click-through window misses its moves, and
@@ -455,7 +489,8 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
       const visible = win.isVisible();
       // the input shape does not survive the window being mapped: apply the verdict again
       if (visible !== lastVisible) { lastVisible = visible; mouse.forget(); }
-      if (!visible) { mouse.tick(); return; }
+      // a page whose renderer ended has no frame to send to until it loads again
+      if (!visible || win.webContents.isCrashed()) { mouse.tick(); return; }
       const pt = cursor.read(), b = win.getBounds();
       const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
       const at = inside ? { x: pt.x - b.x, y: pt.y - b.y } : null;
@@ -466,16 +501,18 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     // the foreground (a borderless full screen game) goes over the pet. The pet asserts topmost again each
     // time another window takes the foreground, and on the first tick it is shown. While the foreground
     // window fills the pet's monitor: hidden with the first setting on, shown again once that ends; with the
-    // second, every click passes through and the page is told so.
+    // second, every click passes through and the page is told so; with the third, the page is told it is covered.
     let lastForeground = null;
     const foregroundTimer = foreground && setInterval(() => {
       if (!win) return;
       const own = hwndOf(win), cur = foreground.current();
-      const covered = (hideWhenFullscreen || passWhenFullscreen) && !!fullscreen?.(cur, own);
+      const covered = (hideWhenFullscreen || passWhenFullscreen || fadeWhenFullscreen) && !!fullscreen?.(cur, own);
       if (covered && hideWhenFullscreen && !autoHidden && win.isVisible()) { autoHidden = true; win.hide(); }
       else if (!(covered && hideWhenFullscreen) && autoHidden) { autoHidden = false; win.showInactive(); }
       const through = covered && passWhenFullscreen;
       if (through !== fullscreenThrough) { fullscreenThrough = through; lockMouse(); win.webContents.send('pet:fullscreenThrough', through); }
+      const faded = covered && fadeWhenFullscreen;
+      if (faded !== fullscreenFaded) { fullscreenFaded = faded; win.webContents.send('pet:fullscreenFade', faded); }
       if (!win.isVisible()) { lastForeground = null; return; }
       if (cur === lastForeground) return;
       lastForeground = cur;
@@ -485,6 +522,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     // page console lines reach the World's log through stdout
     win.webContents.on('console-message', (e) => { if (e.level !== 'debug') console.log(`[page:${e.level}] ${e.message}`); });
     win.webContents.on('did-fail-load', (_e, code, desc, failedUrl) => console.log(`[page:error] 加载失败 ${code} ${desc} ${failedUrl}`));
+    watchRenderer(win.webContents, { name: '桌宠窗口', log: warn });
     win.loadURL(url);
   };
 
@@ -492,6 +530,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     if (dress) { dress.show(); dress.focus(); return; }
     dress = new BrowserWindow({ width: 980, height: 720, title: 'Cortico', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true } });
     guard(dress.webContents);
+    watchRenderer(dress.webContents, { name: '装扮窗口', log: warn });
     dress.on('closed', () => { dress = null; });
     dress.loadURL(target);
   };
@@ -526,10 +565,12 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   onPet('pet:overlayFrame', (_e, rect, at) => overlay.frame(rect, at));
   onPet('pet:hideWhenFullscreen', (_e, on) => { hideWhenFullscreen = !!on; });
   onPet('pet:passWhenFullscreen', (_e, on) => { passWhenFullscreen = !!on; });
+  onPet('pet:fadeWhenFullscreen', (_e, on) => { fadeWhenFullscreen = !!on; });
   onPet('pet:overTaskbar', (_e, on) => { if (overTaskbar !== !!on) { overTaskbar = !!on; place(); } });
   // Windows: WDA_EXCLUDEFROMCAPTURE, which leaves the window out of what other programs capture of the screen
   onPet('pet:hideFromCapture', (_e, on) => win.setContentProtection(!!on));
   onPet('pet:clickThrough', (_e, on) => { trayThrough = !!on; lockMouse(); });
+  onPet('pet:lendClicks', (_e, on) => { clicksLent = !!on; lockMouse(); });
   onPet('pet:watchWindows', (_e, on) => watchWindows(!!on));
   onPet('pet:openDress', () => openDress());
   let language = 'zh';
@@ -545,16 +586,21 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
   handlePet('pet:portrait', async (_e, rect) => {
     try { return win && win.isVisible() ? await capturePortrait(win, rect, nativeImage) : null; } catch { return null; }
   });
+  /** The display under the cursor, when it is not the one the window covers. */
+  const otherDisplay = () => {
+    const pt = cursor.read(), d = screen.getDisplayNearestPoint(pt);
+    return d.id === display().id ? null : { pt, d };
+  };
+  handlePet('pet:cursorElsewhere', () => !!win && !!otherDisplay());
   /**
    * A drag carried or let go of outside the window: when the cursor is over another display, the
    * window moves there and the page gets the cursor's spot in its new coordinates, its new size, and
    * how far a point on screen moved in page coordinates (`dx`, `dy`); null leaves it where it is.
    */
   handlePet('pet:followCursor', () => {
-    if (!win) return null;
-    const pt = cursor.read(), d = screen.getDisplayNearestPoint(pt);
-    const fromDisplay = display();
-    if (d.id === fromDisplay.id) return null;
+    const other = win && otherDisplay();
+    if (!other) return null;
+    const { pt, d } = other, fromDisplay = display();
     const from = coverArea(fromDisplay, overTaskbar), wa = cover(d);
     return { x: pt.x - wa.x, y: pt.y - wa.y, w: wa.width, h: wa.height, dx: from.x - wa.x, dy: from.y - wa.y };
   });
@@ -574,7 +620,7 @@ function runPetHost({ url, parentPid = 0, tray: withTray = true }) {
     // requestingOrigin ends with '/'; a check that fails leaves the page one input with no id or label
     session.defaultSession.setPermissionCheckHandler((wc, permission, requestingOrigin) => permission === 'media' && ours(requestingOrigin));
     create();
-    screen.on('display-metrics-changed', place);
+    screen.on('display-metrics-changed', () => (process.platform === 'win32' ? rescaled('metrics') : place()));
     screen.on('display-added', place);
     screen.on('display-removed', place);
     if (!withTray) return;

@@ -1,6 +1,7 @@
 /**
  * 「习惯」: the everyday settings of the desktop pet, in sections: 通用 (language, what Coo calls you, Coo's
- * name, start at login (the app's login item, through the window's preload), automatic updates and anonymous usage statistics in the `companion` group), 行为与互动, 显示,
+ * name, start at login (the app's login item, through the window's preload), automatic updates and anonymous usage statistics in the `companion` group), 行为与互动,
+ * 气泡 (the bubbles' size, text size, speed and holds, the status and input bubbles, and a sample under them: bubble-preview.ts), 显示,
  * 音效, 电脑操作 (features/cua) and 其他 (the OBS overlay, the Chat page's context ring). Tabs under the title jump to each section
  * (base/ui/section-tabs.ts), the page staying one page. Every row names its
  * setting in the label column, except one that only refines the row above it. In each row the setting
@@ -26,9 +27,10 @@
  * picks (a list, a map) `/api/config` cannot write; they are saved through the pet panel's
  * `setWakeKinds` and `setSelfAdjustCustom`, which set the mode to `custom` in the same write.
  *
- * 「打字键」 (`typeKey`) is read from the same state and saved through the pet panel's `setTypeKey`; its
- * keys are set as the talk key's on the 语音输入 page (key-capture.ts), and how they are pressed is
- * picked beside them. The state names the keys in the app language and says why they cannot be read.
+ * 「打字键」 (`typeKey`) and 「暂停穿透键」 (`throughPauseKey`) are read from the same state and saved through the pet
+ * panel's `setTypeKey` and `setThroughPauseKey`; their keys are set as the talk key's on the 语音输入 page
+ * (key-capture.ts), and how they are pressed is picked beside them. The state names the keys in the app
+ * language and says why they cannot be read.
  */
 
 import { actionProblem } from '../../base/ui/problem.ts';
@@ -44,6 +46,10 @@ import { S as CUA } from '../cua/strings.ts';
 import { announceName } from '../bot-name.ts';
 import { scaleSlider } from 'cortico-world-desktop-pet/web/scale-slider.js';
 import { S } from './strings.ts';
+import { motionLevel } from '../../base/motion.ts';
+import { MOTION_GROUP, MOTION_KEY, useMotionChoice } from '../../base/motion-choice.ts';
+import type { MotionChoice } from 'cortico-world-desktop-pet/web/motion-level.js';
+import { bubblePreview } from './bubble-preview.ts';
 
 const GROUP = 'world:desktop-pet';
 const SOUND_GROUP = 'world:desktop-pet:sound';
@@ -76,6 +82,9 @@ const KEYS = {
   frameRate: `${K}.window.frameRate`,
   hideFullscreen: `${K}.window.hideWhenFullscreen`,
   passFullscreen: `${K}.window.passWhenFullscreen`,
+  fade: `${K}.window.fade`,
+  fadeFullscreen: `${K}.window.fadeWhenFullscreen`,
+  fullscreenFade: `${K}.window.fullscreenFade`,
   overTaskbar: `${K}.window.overTaskbar`,
   hideFromCapture: `${K}.window.hideFromCapture`,
   overlay: `${K}.window.exportOverlay`,
@@ -106,18 +115,19 @@ const SELF_MODES = ['off', 'default', 'any', 'custom'] as const;
 const SELF_KEYS = ['figure', 'scheme', 'roam', 'snoreSeconds', 'sound', 'scale', 'bubbleSize', 'fontSize', 'theme', 'hoverButtons', 'user'] as const;
 const SELF_DEFAULT: readonly string[] = ['figure', 'scheme', 'roam', 'snoreSeconds'];
 
-/** What the pet panel's state says of the two rows and of the typing key. */
+/** What the pet panel's state says of the two rows and of the typing and click-through pause keys. */
 interface HabitState {
   wake?: { wakeOn: string; wakeKinds: string[] };
   selfAdjust?: { mode: string; custom: Record<string, boolean> };
-  typeKey?: TypeKeyState;
+  typeKey?: KeyState;
+  throughPauseKey?: KeyState;
 }
 type Habits = Required<Pick<HabitState, 'wake' | 'selfAdjust'>>;
-interface TypeKeyState { enabled: boolean; hotkey: string; keyLabel: string; problem: string | null }
+interface KeyState { enabled: boolean; hotkey: string; keyLabel: string; problem: string | null }
 
 /** The pet's actions in the menu's order (the World's PET_ACTIONS), with the icon each shows. */
 const ACTIONS: ReadonlyArray<[id: string, icon: string]> = [
-  ['chat', 'chat'], ['voice', 'mic'], ['roam', 'roam_calm'], ['theme', 'moon'], ['sound', 'sound'], ['hide', 'eyeOff'], ['size', 'resize'], ['dress', 'shirt'], ['worlds', 'boxes'],
+  ['chat', 'chat'], ['voice', 'mic'], ['roam', 'roam_calm'], ['theme', 'moon'], ['sound', 'sound'], ['hide', 'eyeOff'], ['through', 'through'], ['size', 'resize'], ['fade', 'fade'], ['dress', 'shirt'], ['cua', 'computer'], ['worlds', 'boxes'],
 ];
 /** Kinds of sound, each a switch under `worlds.desktop-pet.sounds.<kind>`: the kinds the pet page mutes by. */
 const SOUND_KINDS = Object.keys(PAGE_SOUND_KINDS);
@@ -141,6 +151,8 @@ const BUBBLE_SPEED_MIN = .5, BUBBLE_SPEED_MAX = 2;
 /** The longest fixed bubble hold in seconds, as BUBBLE_HOLD_MAX in the World's config.ts; 固定 first shows HOLD_START, about the automatic hold of a 50-character line at bubble speed 1 (1.6 + 50 × .07). */
 const BUBBLE_HOLD_MAX = 60, HOLD_START = 5;
 const FRAME_RATES = [60, 120, 144, 0];
+/** The transparency range in percent and its step, as FADE_MAX and FADE_STEP in the World's config.ts. */
+const FADE_MAX = 95, FADE_STEP = 5;
 
 /** While the size slider moves, at most one save per this many milliseconds. */
 const SCALE_SEND_MS = 80;
@@ -195,22 +207,29 @@ async function mount(ctx: PageContext): Promise<void> {
   glowBox.append(glow.el, glowText);
   new ResizeObserver(() => glow.relayout()).observe(glowBox);
   const showGlow = () => { glowText.textContent = glowLabel(glow.value); };
-  // 气泡尺寸, 字体尺寸 and 气泡速度: the same slider in steps of 5%, saved once a drag or a key press ends
-  const percentSlider = (label: string, key: string, min: number, max: number) => {
+  /**
+   * 气泡尺寸, 字体尺寸 and 气泡速度 (factors in steps of .05), and 透明度 as usual and during full screen (whole percent, 0
+   * opaque to FADE_MAX in steps of FADE_STEP): the same slider, the value shown as a percentage, saved once a drag or a
+   * key press ends.
+   */
+  const percentSlider = (label: string, key: string, min: number, max: number, whole = false) => {
     const text = ui.h('span', 'companion-rangeval');
     const box = ui.h('div', 'companion-rangebox');
-    const show = () => { text.textContent = `${Math.round(slider.value * 100)}%`; };
+    const pct = (v: number) => `${whole ? v : Math.round(v * 100)}%`;
+    const show = () => { text.textContent = pct(slider.value); };
     const slider = scaleSlider(root.ownerDocument, {
       className: 'companion-scale',
-      min, soft: max, max, step: .05, label,
+      min, soft: max, max, step: whole ? FADE_STEP : .05, label, format: pct,
       room: () => box.clientWidth - text.offsetWidth - 12,
-      onInput: () => show(),
-      onChange: () => { show(); void save(key, slider.value, GROUP, slider.el); },
+      onInput: () => { show(); preview.refresh(); },
+      onChange: () => { show(); preview.refresh(); void save(key, slider.value, GROUP, slider.el); },
     });
     box.append(slider.el, text);
     new ResizeObserver(() => slider.relayout()).observe(box);
     return { box, slider, show };
   };
+  const fade = percentSlider(S.fade, KEYS.fade, 0, FADE_MAX, true);
+  const fullscreenFade = percentSlider(S.fade, KEYS.fullscreenFade, 0, FADE_MAX, true);
   const bubbleSize = percentSlider(S.bubbleSize, KEYS.bubbleSize, BUBBLE_SIZE_MIN, BUBBLE_SIZE_MAX);
   const fontSize = percentSlider(S.fontSize, KEYS.fontSize, BUBBLE_SIZE_MIN, BUBBLE_SIZE_MAX);
   const bubbleSpeed = percentSlider(S.bubbleSpeed, KEYS.bubbleSpeed, BUBBLE_SPEED_MIN, BUBBLE_SPEED_MAX);
@@ -246,23 +265,43 @@ async function mount(ctx: PageContext): Promise<void> {
       if (v && document.activeElement !== num) num.value = num.dataset.saved = String(v);
     };
     const setEnabled = (on: boolean) => { mode.disabled = num.disabled = !on; };
-    return { box, sync, setEnabled };
+    /** The hold shown: 0 for 自动, else the seconds last saved. */
+    const value = () => (mode.value === 'auto' ? 0 : Number(num.dataset.saved ?? num.value) || 0);
+    return { box, sync, setEnabled, value };
   };
   const sayHold = holdPicker(S.sayBubbleHold, KEYS.sayBubbleHoldSec);
   const saidHold = holdPicker(S.saidBubbleHold, KEYS.saidBubbleHoldSec);
   const frameRate = ui.segmented(FRAME_RATES.map((n) => ({ value: String(n), label: n ? String(n) : S.frameUnlimited })),
     { size: 'sm', onSelect: (v) => void save(KEYS.frameRate, Number(v), GROUP, frameRate.el) });
   const lockFps = ui.checkbox(S.lockFps, { onChange: (on) => void save(KEYS.lockFps, on, GROUP, lockFps.el) });
+  // 动态效果: the three levels, and whether they follow the system; following it, the levels show the system's
+  const view = root.ownerDocument.defaultView!;
+  let motionChoice: MotionChoice = 'system';
+  const showMotion = () => { motionLevels.setValue(motionLevel(view)); motionSystem.setChecked(motionChoice === 'system'); };
+  const chooseMotion = (choice: MotionChoice, anchor: HTMLElement) => { motionChoice = useMotionChoice(view, choice); showMotion(); void save(MOTION_KEY, motionChoice, MOTION_GROUP, anchor); };
+  const motionLevels = ui.segmented([{ value: 'low', label: S.motionLow }, { value: 'medium', label: S.motionMedium }, { value: 'high', label: S.motionHigh }],
+    { size: 'sm', onSelect: (v) => chooseMotion(v as MotionChoice, motionLevels.el) });
+  const motionSystem = ui.checkbox(S.motionSystem, { onChange: (on) => chooseMotion(on ? 'system' : motionLevel(view), motionSystem.el) });
+  view.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => showMotion(), { signal });
+  const motionBox = ui.h('div', 'companion-switchbox companion-motion');
+  motionBox.append(motionLevels.el, motionSystem.el);
   const hideFullscreen = ui.checkbox(S.hideFullscreen, { onChange: (on) => void save(KEYS.hideFullscreen, on, GROUP, hideFullscreen.el) });
   const passFullscreen = ui.checkbox(S.passFullscreen, { onChange: (on) => void save(KEYS.passFullscreen, on, GROUP, passFullscreen.el) });
-  const fullscreenBox = ui.h('div', 'companion-checks');
-  fullscreenBox.append(hideFullscreen.el, passFullscreen.el);
+  const fadeFullscreen = ui.checkbox(S.fadeFullscreen, {
+    onChange: (on) => { fullscreenFade.box.hidden = !on; void save(KEYS.fadeFullscreen, on, GROUP, fadeFullscreen.el); },
+  });
+  const fullscreenChecks = ui.h('div', 'companion-checks');
+  fullscreenChecks.append(hideFullscreen.el, passFullscreen.el, fadeFullscreen.el);
+  // the transparency during full screen, under the switches while 变淡 is on
+  const fullscreenBox = ui.h('div', 'companion-switchbox');
+  fullscreenFade.box.hidden = true;
+  fullscreenBox.append(fullscreenChecks, fullscreenFade.box);
   const hideFromCapture = ui.checkbox(S.hideFromCapture, { onChange: (on) => void save(KEYS.hideFromCapture, on, GROUP, hideFromCapture.el) });
   const overTaskbar = ui.checkbox(S.overTaskbar, { onChange: (on) => void save(KEYS.overTaskbar, on, GROUP, overTaskbar.el) });
   const remember = ui.checkbox(S.remember, { onChange: (on) => void save(KEYS.remember, on, GROUP, remember.el) });
   const dblclick = ui.checkbox(S.dblclick, { onChange: (on) => void save(KEYS.dblclick, on, GROUP, dblclick.el) });
   const statusBubble = ui.checkbox(S.statusBubble, { onChange: (on) => void save(KEYS.statusBubble, on, GROUP, statusBubble.el) });
-  const saidBubbles = ui.checkbox(S.saidBubble, { onChange: (on) => { saidHold.setEnabled(on); void save(KEYS.saidBubbles, on, GROUP, saidBubbles.el); } });
+  const saidBubbles = ui.checkbox(S.saidBubble, { onChange: (on) => { saidHold.setEnabled(on); preview.refresh(); void save(KEYS.saidBubbles, on, GROUP, saidBubbles.el); } });
   // the two rows below follow the pet panel's state; 「自定义…」 is picked by saving its popup
   let habit: Habits = { wake: { wakeOn: 'poke', wakeKinds: ['poke'] }, selfAdjust: { mode: 'default', custom: {} } };
   const wakeHint = ui.h('p', 'home-note');
@@ -345,50 +384,60 @@ async function mount(ctx: PageContext): Promise<void> {
       void callPet('setSelfAdjustCustom', [custom], selfMode.el);
     });
   }
-  // 打字键: the switch, and while it is on the keys, a button to set others and how they are pressed
-  let typeKey: TypeKeyState = { enabled: false, hotkey: '', keyLabel: '', problem: null };
-  const typeSwitch = ui.checkbox(S.typeKey, { onChange: (on) => void callPet('setTypeKey', [{ enabled: on }], typeSwitch.el) });
-  const typeKeyName = ui.h('span', 'companion-rangeval');
-  const typeKeyBtn = ui.button(S.typeKeyChange, { size: 'sm' });
-  const typePress = ui.select({ onChange: (v) => void callPet('setTypeKey', [{ hotkey: withTaps(splitTaps(typeKey.hotkey).combo, Number(v)) }], typePress) });
-  const typeKeyBox = ui.h('div', 'companion-rangebox');
-  typeKeyBox.append(typeKeyName, typeKeyBtn, typePress);
-  const typeBox = ui.h('div', 'companion-switchbox');
-  typeBox.append(typeSwitch.el, typeKeyBox);
-  const typeHint = ui.h('p', 'home-note');
-  let capture: { stop(): void } | null = null;
-  typeKeyBtn.addEventListener('click', () => {
-    if (capture) { capture.stop(); return; }
-    typeKeyName.textContent = '…';
-    typeKeyBtn.textContent = S.popupCancel;
-    typeHint.textContent = S.typeKeyCapture;
-    typeHint.classList.remove('bad');
-    capture = captureKey(window, (combo) => {
-      capture = null;
-      typeKeyBtn.textContent = S.typeKeyChange;
-      // how the keys are pressed stays as picked
-      if (combo) void callPet('setTypeKey', [{ hotkey: withTaps(combo, splitTaps(typeKey.hotkey).taps) }], typeKeyBtn);
-      else renderTypeKey();
-    });
-  }, { signal });
-  signal.addEventListener('abort', () => capture?.stop());
-  function renderTypeKey(): void {
-    typeSwitch.setChecked(typeKey.enabled);
-    typeKeyBox.hidden = !typeKey.enabled;
-    if (capture) return;
-    typeKeyName.textContent = typeKey.keyLabel;
-    // a key set to three presses in config.json keeps its choice; the row offers two or one
-    const { taps } = splitTaps(typeKey.hotkey);
-    const presses = PRESSES.filter((n) => n < 3 || n === taps);
-    if (typePress.dataset.list !== presses.join()) {
-      typePress.dataset.list = presses.join();
-      typePress.replaceChildren(...presses.map((n) => { const o = ui.h('option', null, S.typeKeyPresses[n] ?? String(n)); o.value = String(n); return o; }));
+  /**
+   * A hotkey row (打字键, 暂停穿透键): the switch, and while it is on the keys, a button to set others and how they are
+   * pressed. `method` is the pet panel's setter; `render` takes the state the panel gives back.
+   */
+  function keyRow(method: string, text: { on: string; hint: string; capture: string; presses: Record<number, string> }) {
+    let state: KeyState = { enabled: false, hotkey: '', keyLabel: '', problem: null };
+    const set = (patch: Partial<Pick<KeyState, 'enabled' | 'hotkey'>>, anchor: HTMLElement) => void callPet(method, [patch], anchor);
+    const toggle = ui.checkbox(text.on, { onChange: (on) => set({ enabled: on }, toggle.el) });
+    const name = ui.h('span', 'companion-rangeval');
+    const change = ui.button(S.typeKeyChange, { size: 'sm' });
+    const press = ui.select({ onChange: (v) => set({ hotkey: withTaps(splitTaps(state.hotkey).combo, Number(v)) }, press) });
+    const keys = ui.h('div', 'companion-rangebox');
+    keys.append(name, change, press);
+    const box = ui.h('div', 'companion-switchbox');
+    box.append(toggle.el, keys);
+    const hint = ui.h('p', 'home-note');
+    let capture: { stop(): void } | null = null;
+    change.addEventListener('click', () => {
+      if (capture) { capture.stop(); return; }
+      name.textContent = '…';
+      change.textContent = S.popupCancel;
+      hint.textContent = text.capture;
+      hint.classList.remove('bad');
+      capture = captureKey(window, (combo) => {
+        capture = null;
+        change.textContent = S.typeKeyChange;
+        // how the keys are pressed stays as picked
+        if (combo) set({ hotkey: withTaps(combo, splitTaps(state.hotkey).taps) }, change);
+        else render(state);
+      });
+    }, { signal });
+    signal.addEventListener('abort', () => capture?.stop());
+    function render(next: KeyState): void {
+      state = next;
+      toggle.setChecked(state.enabled);
+      keys.hidden = !state.enabled;
+      if (capture) return;
+      name.textContent = state.keyLabel;
+      // a key set to three presses in config.json keeps its choice; the row offers two or one
+      const { taps } = splitTaps(state.hotkey);
+      const presses = PRESSES.filter((n) => n < 3 || n === taps);
+      if (press.dataset.list !== presses.join()) {
+        press.dataset.list = presses.join();
+        press.replaceChildren(...presses.map((n) => { const o = ui.h('option', null, text.presses[n] ?? String(n)); o.value = String(n); return o; }));
+      }
+      if (document.activeElement !== press) press.value = String(taps);
+      const problem = state.enabled ? state.problem : null;
+      hint.textContent = problem ?? text.hint;
+      hint.classList.toggle('bad', !!problem);
     }
-    if (document.activeElement !== typePress) typePress.value = String(taps);
-    const problem = typeKey.enabled ? typeKey.problem : null;
-    typeHint.textContent = problem ?? S.typeKeyHint;
-    typeHint.classList.toggle('bad', !!problem);
+    return { box, hint, render };
   }
+  const typeKey = keyRow('setTypeKey', { on: S.typeKey, hint: S.typeKeyHint, capture: S.typeKeyCapture, presses: S.typeKeyPresses });
+  const throughPauseKey = keyRow('setThroughPauseKey', { on: S.throughPauseKey, hint: S.throughPauseKeyHint, capture: S.throughPauseKeyCapture, presses: S.throughPauseKeyPresses });
   const stats = ui.checkbox(S.stats, { onChange: (on) => void save(STATS_KEY, on, STATS_GROUP, stats.el) });
   const statsDoc = ui.h('a', 'home-link companion-statsdoc', S.statsDoc);
   statsDoc.href = STATS_DOC;
@@ -406,9 +455,12 @@ async function mount(ctx: PageContext): Promise<void> {
     b.setAttribute('aria-label', b.title);
     b.innerHTML = ICONS[iconName] ?? '';
     b.append(ui.h('span', 'companion-hoverlbl', S.actions[id] ?? id));
-    b.addEventListener('click', () => {
+    b.addEventListener('click', async () => {
       const on = picked.includes(id);
       if (!on && picked.length >= MAX_HOVER) return;
+      // the computer use button turns it on at once: added only once its risks are confirmed (features/cua); the picks
+      // read again after the dialog, which the page's polling may have changed meanwhile
+      if (id === 'cua' && !on && (!await cua.confirmHoverButton() || picked.includes(id) || picked.length >= MAX_HOVER)) return;
       // kept in the menu's order, whatever order they were picked in
       picked = ACTIONS.map(([a]) => a).filter((a) => (a === id ? !on : picked.includes(a)));
       renderHover();
@@ -437,7 +489,7 @@ async function mount(ctx: PageContext): Promise<void> {
     return r;
   };
   // the World declares these settings on Windows only; elsewhere their values never arrive and the row stays hidden
-  const hideFullscreenRow = row(S.hideFullscreenLabel, fullscreenBox, [S.hideFullscreenHint, S.passFullscreenHint]);
+  const hideFullscreenRow = row(S.hideFullscreenLabel, fullscreenBox, [S.hideFullscreenHint, S.passFullscreenHint, S.fadeFullscreenHint]);
   hideFullscreenRow.hidden = true;
   const overTaskbarRow = row(S.overTaskbarLabel, overTaskbar.el, S.overTaskbarHint);
   overTaskbarRow.hidden = true;
@@ -468,21 +520,34 @@ async function mount(ctx: PageContext): Promise<void> {
     row(S.self, selfMode.el, selfHint),
     row(S.hover, hoverBox, S.hoverHint(MAX_HOVER)),
     row(S.dblclickLabel, dblclick.el),
-    row(S.typeKeyLabel, typeBox, typeHint),
-    row(S.statusBubbleLabel, statusBubble.el, S.statusBubbleHint),
-    row(S.saidBubbleLabel, saidBubbles.el),
-    row(S.saidBubbleHold, saidHold.box, S.saidBubbleHint),
+    row(S.typeKeyLabel, typeKey.box, typeKey.hint),
+    row(S.throughPauseKeyLabel, throughPauseKey.box, throughPauseKey.hint),
   );
-  const display = ui.sheet({ title: S.groupDisplay });
-  display.body.append(
-    row(S.scale, scaleBox),
+  // 气泡: how Coo's bubbles and yours look and how long they stay, with a sample at the end
+  const bubbles = ui.sheet({ title: S.groupBubbles });
+  const preview = bubblePreview(root.ownerDocument, signal, () => ({
+    size: bubbleSize.slider.value, font: fontSize.slider.value, speed: bubbleSpeed.slider.value,
+    sayHoldSec: sayHold.value(), saidHoldSec: saidHold.value(),
+    status: statusBubble.checked, said: saidBubbles.checked,
+  }));
+  bubbles.body.append(
     row(S.bubbleSize, bubbleSize.box, S.bubbleSizeHint),
     row(S.fontSize, fontSize.box, S.fontSizeHint),
     row(S.bubbleSpeed, bubbleSpeed.box, S.bubbleSpeedHint),
     row(S.sayBubbleHold, sayHold.box, S.sayBubbleHoldHint),
+    row(S.statusBubbleLabel, statusBubble.el, S.statusBubbleHint),
+    row(S.saidBubbleLabel, saidBubbles.el),
+    row(S.saidBubbleHold, saidHold.box, S.saidBubbleHint),
+    row(S.previewLabel, preview.el),
+  );
+  const display = ui.sheet({ title: S.groupDisplay });
+  display.body.append(
+    row(S.scale, scaleBox),
     row(S.glow, glowBox, S.glowHint),
+    row(S.fade, fade.box, S.fadeHint),
     row(S.frameRate, frameRate.el, S.frameRateHint),
     row('', lockFps.el, S.lockFpsHint),
+    row(S.motion, motionBox, S.motionHint),
     hideFullscreenRow,
     overTaskbarRow,
     hideFromCaptureRow,
@@ -595,7 +660,7 @@ async function mount(ctx: PageContext): Promise<void> {
     speedRow,
   );
   const cua = cuaSection(ctx, row);
-  root.append(sounds.el, speechSheet.el, cua.el);
+  root.append(sounds.el, bubbles.el, speechSheet.el, cua.el);
 
   /* ---------- other: the OBS overlay, the context ring ---------- */
   const other = ui.sheet({ title: S.groupOther });
@@ -618,6 +683,7 @@ async function mount(ctx: PageContext): Promise<void> {
     { value: 'behavior', label: S.groupBehavior, el: behavior.el },
     { value: 'display', label: S.groupDisplay, el: display.el },
     { value: 'sounds', label: S.soundTitle, el: sounds.el },
+    { value: 'bubbles', label: S.groupBubbles, el: bubbles.el },
     { value: 'speech', label: S.speechTitle, el: speechSheet.el },
     { value: 'cua', label: CUA.title, el: cua.el },
     { value: 'other', label: S.groupOther, el: other.el },
@@ -647,7 +713,8 @@ async function mount(ctx: PageContext): Promise<void> {
     }
   };
   function takeHabits(state: HabitState | null | undefined): void {
-    if (state?.typeKey) { typeKey = state.typeKey; renderTypeKey(); }
+    if (state?.typeKey) typeKey.render(state.typeKey);
+    if (state?.throughPauseKey) throughPauseKey.render(state.throughPauseKey);
     if (!state?.wake || !state.selfAdjust) return;
     habit = { wake: state.wake, selfAdjust: state.selfAdjust };
     renderHabits();
@@ -721,6 +788,9 @@ async function mount(ctx: PageContext): Promise<void> {
     if (typeof values[KEYS.roam] === 'string') roam.setValue(values[KEYS.roam] as string);
     if (typeof values[KEYS.scale] === 'number' && !scale.active && active !== scale.el) { scale.set(values[KEYS.scale] as number); scaleSent = scale.value; showScale(); }
     if (!glow.active && active !== glow.el) { glow.set(typeof values[KEYS.glow] === 'number' ? values[KEYS.glow] as number : GLOW_DEFAULT); showGlow(); }
+    for (const [s, key] of [[fade, KEYS.fade], [fullscreenFade, KEYS.fullscreenFade]] as const) {
+      if (typeof values[key] === 'number' && !s.slider.active && active !== s.slider.el) { s.slider.set(values[key] as number); s.show(); }
+    }
     for (const [s, key] of [[bubbleSize, KEYS.bubbleSize], [fontSize, KEYS.fontSize], [bubbleSpeed, KEYS.bubbleSpeed]] as const) {
       if (!s.slider.active && active !== s.slider.el) { s.slider.set(typeof values[key] === 'number' ? values[key] as number : 1); s.show(); }
     }
@@ -742,8 +812,11 @@ async function mount(ctx: PageContext): Promise<void> {
       snore.dataset.saved = snore.value;
     }
     if (typeof values[KEYS.lockFps] === 'boolean') lockFps.setChecked(values[KEYS.lockFps] as boolean);
+    motionChoice = useMotionChoice(view, values[MOTION_KEY]);
+    showMotion();
     if (typeof values[KEYS.hideFullscreen] === 'boolean') { hideFullscreen.setChecked(values[KEYS.hideFullscreen] as boolean); hideFullscreenRow.hidden = false; }
     if (typeof values[KEYS.passFullscreen] === 'boolean') passFullscreen.setChecked(values[KEYS.passFullscreen] as boolean);
+    if (typeof values[KEYS.fadeFullscreen] === 'boolean') { fadeFullscreen.setChecked(values[KEYS.fadeFullscreen] as boolean); fullscreenFade.box.hidden = !values[KEYS.fadeFullscreen]; }
     if (typeof values[KEYS.overTaskbar] === 'boolean') { overTaskbar.setChecked(values[KEYS.overTaskbar] as boolean); overTaskbarRow.hidden = false; }
     if (typeof values[KEYS.hideFromCapture] === 'boolean') { hideFromCapture.setChecked(values[KEYS.hideFromCapture] as boolean); hideFromCaptureRow.hidden = false; }
     if (typeof values[KEYS.remember] === 'boolean') remember.setChecked(values[KEYS.remember] as boolean);
@@ -759,6 +832,7 @@ async function mount(ctx: PageContext): Promise<void> {
     if (!root.ownerDocument.querySelector('.companion-popup')) takeHabits(state);
     overlayUrl.value = state?.overlayUrl ?? '';
     overlayUrlBox.hidden = !overlay.checked || !overlayUrl.value;
+    preview.refresh();
     if (typeof values[KEYS.hover] === 'string') {
       picked = (values[KEYS.hover] as string).split(',').map((x) => x.trim()).filter((x) => ACTIONS.some(([a]) => a === x));
       renderHover();

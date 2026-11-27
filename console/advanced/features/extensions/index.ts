@@ -10,7 +10,7 @@ import type { FeatureContext } from '../feature.ts';
 import { S } from './strings.ts';
 import { CATALOG_CATEGORY_IDS, inCatalogCategory, isFunctionTag, type CatalogCategory } from './catalog.ts';
 import { problemPopover, problemAnchorVisible, listProblem, scrollerOf, wheelInto } from '../../../base/ui/problem.ts';
-import { fold, measureReflow, prefersStill } from '../../../base/motion.ts';
+import { fold, measureReflow, motionLevel } from '../../../base/motion.ts';
 import { matchRanges, matchRank, prepareFields, searchTerms, type MatchRank, type PreparedFields } from './search.ts';
 import { hideTip, showTip } from '../../../base/ui/tip.ts';
 import { extensionForWorld } from '../worlds/library.ts';
@@ -475,6 +475,8 @@ export function mountWorldExtensionDetails(ctx: ExtensionContext) {
   return createExtensionContent(ctx, 'world').worldDetails;
 }
 
+/** A folded comment's height, about eleven lines, and how much longer than that a comment must be to fold. */
+const COMMENT_CLAMP_PX = 240, COMMENT_SLACK_PX = 64;
 function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionContext, kind: Category, root?: HTMLElement, workspace?: ExtensionWorkspace) {
   const { signal } = lifecycle;
   const win = doc.defaultView!;
@@ -560,7 +562,7 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
   let emptyFace: number | undefined;
   async function replayCards(work: Promise<unknown>) {
     const run = ++replays, grid = marketGrid;
-    if (prefersStill(win)) { await work; return; }
+    if (motionLevel(win) === 'low') { await work; return; }
     grid.classList.add('is-reloading');
     await Promise.all([work.catch(() => {}), new Promise(resolve => win.setTimeout(resolve, 110))]);
     if (signal.aborted || run !== replays) return;
@@ -760,7 +762,7 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     el.addEventListener('pointerleave', hideSoon, { signal }); el.addEventListener('blur', hideHint, { signal });
   }
   /**
-   * A sidebar row keeps its explanation behind a question mark beside the name, shown while the row is hovered;
+   * A sidebar row keeps its explanation behind a question mark after its name (see `sidebarName`), shown while the row is hovered;
    * hovering the mark opens it, and a click on the mark does not press the row.
    */
   function helpMark(row: HTMLElement, title: string, text: string) {
@@ -770,12 +772,79 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     mark.addEventListener('click', event => event.stopPropagation(), { signal });
     return mark;
   }
+  /** Each sidebar row's `sidebarName` controls, by row, for the redraw and the resize below. */
+  const hints = new WeakMap<Element, { show: () => void; reset: () => void; width: number }>();
+  /** Where the pointer last was over the sidebar's tags, while it is there. */
+  let tagPointer: { x: number; y: number } | undefined;
+  /** A hovered name whose width changes (the window or the sidebar resized) is measured again. */
+  const hintedResize = doc.defaultView?.ResizeObserver ? new doc.defaultView.ResizeObserver(entries => {
+    for (const { target } of entries) {
+      if (!target.isConnected) { hintedResize!.unobserve(target); continue; }
+      const row = target.parentElement, hint = row && hints.get(row);
+      if (hint && Math.abs(target.getBoundingClientRect().width - hint.width) > 0.5) { hint.reset(); hint.show(); }
+    }
+  }) : undefined;
+  signal.addEventListener('abort', () => hintedResize?.disconnect());
+  /**
+   * A sidebar row's name. It wraps between words and never inside one: each word is an `extension-tag-word`, and a
+   * word wider than the row ends in an ellipsis, so a one-word name stays on one line. Chinese and Japanese, which
+   * have no spaces, wrap between characters.
+   *
+   * With a hint, a question mark follows the last word while the row is hovered or focused. When that line has no room
+   * for it the last word alone is cut shorter, so no other word moves. The last word of Chinese or Japanese is its
+   * last character, with more taken from the same line when one is too little to cut.
+   */
+  function sidebarName(row: HTMLElement, label: string, hint?: string) {
+    // px: the mark (16) and its 2px margin (styles.css `.extension-tag-help`), and an ellipsis of at most one em of the 11.5px sidebar font
+    const ELLIPSIS_AND_MARK = 16 + 2 + 11.5;
+    const byCharacter = (text: string) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text);
+    const tokens = label.trim().split(/(\s+)/), last = tokens.pop() ?? '';
+    const name = ui.h('span', 'extension-tag-name'), word = ui.h('span', 'extension-tag-word'), head = doc.createTextNode('');
+    for (const token of tokens) name.append(/\s/.test(token) || byCharacter(token) ? token : ui.h('span', 'extension-tag-word', token));
+    const characters = byCharacter(last), cut = characters ? last.length - (Array.from(last).pop()?.length ?? 0) : 0;
+    const split = (at: number) => { head.data = last.slice(0, at); word.textContent = last.slice(at); };
+    split(cut);
+    if (!hint) {
+      name.append(head, word);
+      // Without a hint the full name pops up only when a word of it is cut.
+      attachHint(row, () => [...name.querySelectorAll<HTMLElement>('.extension-tag-word')].some(w => w.scrollWidth > w.clientWidth) ? label : '');
+      return name;
+    }
+    const tail = ui.h('span', 'extension-tag-tail');
+    tail.append(word, helpMark(row, label, hint));
+    name.append(head, tail);
+    const show = () => {
+      if (row.classList.contains('is-hinting')) return;
+      // Measured with the mark still hidden: the room from the last word's start to the name's right edge.
+      const range = doc.createRange();
+      const topAt = (i: number) => { range.setStart(head, i); range.setEnd(head, i + 1); return range.getBoundingClientRect().top; };
+      const right = name.getBoundingClientRect().right;
+      let at = cut, room = right - word.getBoundingClientRect().left;
+      // Never a character from the line above.
+      for (; characters && room < ELLIPSIS_AND_MARK && at > 0;) {
+        const step = /[\uDC00-\uDFFF]/.test(last[at - 1]) ? 2 : 1;
+        if (Math.abs(topAt(at - step) - word.getBoundingClientRect().top) > 2) break;
+        split(at -= step); room = right - word.getBoundingClientRect().left;
+      }
+      row.classList.add('is-hinting');
+      control.width = name.getBoundingClientRect().width; hintedResize?.observe(name);
+      const tailWidth = tail.getBoundingClientRect().width;
+      if (tailWidth > room) word.style.maxWidth = `${Math.max(0, Math.floor(room - (tailWidth - word.getBoundingClientRect().width)) - 1)}px`;
+    };
+    const reset = () => { row.classList.remove('is-hinting'); word.style.removeProperty('max-width'); split(cut); };
+    const hide = () => { if (!row.matches(':hover, :focus-visible')) { hintedResize?.unobserve(name); reset(); } };
+    const control = { show, reset, width: 0 };
+    hints.set(row, control);
+    row.addEventListener('pointerenter', show, { signal }); row.addEventListener('pointerleave', hide, { signal });
+    row.addEventListener('focus', () => { if (row.matches(':focus-visible')) show(); }, { signal }); row.addEventListener('blur', hide, { signal });
+    return name;
+  }
   /** 标签:悬停显示说明,侧栏里(`helpMark`)改由名字旁的问号显示。给了 `onToggle` 就是筛选按钮,点它不打开卡片。 */
   function tagChip(id: string, opts?: { active?: boolean; count?: number; onToggle?: () => void; helpMark?: boolean }) {
     const tag = marketIndex.tags[id];
     const el = ui.h(opts?.onToggle ? 'button' : 'span', 'extension-tag' + (tag.style ? ' is-' + tag.style : '') + (opts?.active ? ' is-active' : ''));
-    el.append(ui.h('span', '', tag.label));
-    if (!opts?.helpMark) attachHint(el, tag.label, tag.hint); else if (tag.hint) el.append(helpMark(el, tag.label, tag.hint));
+    el.append(opts?.helpMark ? sidebarName(el, tag.label, tag.hint) : ui.h('span', 'extension-tag-name', tag.label));
+    if (!opts?.helpMark) attachHint(el, tag.label, tag.hint);
     if (opts?.count !== undefined) el.append(ui.h('span', 'extension-tag-count', String(opts.count)));
     const toggle = opts?.onToggle;
     if (toggle) {
@@ -1123,12 +1192,46 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     button.addEventListener('click', () => insertTextBlock(input), { signal });
     return button;
   }
+  /** Each folded comment's body, measured again whenever its box changes (attached, the column resized, an image loaded). */
+  const commentFits = new WeakMap<Element, () => void>();
+  let commentSizes: ResizeObserver | undefined;
+  /**
+   * A comment taller than COMMENT_CLAMP_PX by more than COMMENT_SLACK_PX shows its first COMMENT_CLAMP_PX, fading out, with a
+   * text button that opens it whole and folds it again; a fold that leaves the comment's top above its scrolled view scrolls back to it.
+   */
+  function foldable(el: HTMLElement, body: HTMLElement) {
+    const toggle = ui.h('button', 'extension-comment-toggle', S.commentExpand) as HTMLButtonElement; toggle.type = 'button'; toggle.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    let open = false;
+    const paint = () => {
+      const long = body.scrollHeight > COMMENT_CLAMP_PX + COMMENT_SLACK_PX;
+      const folded = long && !open;
+      body.classList.toggle('is-folded', folded); body.style.maxHeight = folded ? `${COMMENT_CLAMP_PX}px` : '';
+      toggle.hidden = !long; toggle.textContent = open ? S.commentCollapse : S.commentExpand; toggle.setAttribute('aria-expanded', String(open));
+    };
+    toggle.addEventListener('click', () => {
+      open = !open; paint();
+      if (open) return;
+      let view = el.parentElement;
+      while (view && !/auto|scroll/.test(win.getComputedStyle(view).overflowY)) view = view.parentElement;
+      if (view && el.getBoundingClientRect().top < view.getBoundingClientRect().top) el.scrollIntoView({ block: 'start' });
+    }, { signal });
+    commentFits.set(body, paint);
+    if (!commentSizes && typeof win.ResizeObserver === 'function') {
+      const observer = new win.ResizeObserver(entries => { for (const entry of entries) commentFits.get(entry.target)?.(); });
+      commentSizes = observer; lifecycle.add(() => observer.disconnect());
+    }
+    commentSizes?.observe(body);
+    el.append(toggle);
+  }
   function commentItem(comment: CommentView, reply?: (to: CommentView) => void) {
     const el = ui.h('article', 'extension-comment');
     const head = ui.h('div', 'extension-comment-head');
     head.append(githubAvatar(comment.author, comment.avatar), ui.h('b', '', comment.author), ui.h('time', 'muted', comment.createdAt.slice(0, 10)));
     if (reply) { const button = ui.h('button', 'extension-comment-reply') as HTMLButtonElement; button.type = 'button'; button.append(icon(doc, 'reply')); button.setAttribute('aria-label', S.reply); attachHint(button, S.reply); button.addEventListener('click', () => reply(comment), { signal }); head.append(button); }
-    el.append(head, commentBody(comment.body));
+    const body = commentBody(comment.body);
+    el.append(head, body);
+    foldable(el, body);
     return el;
   }
   /** 详情里的评论区:新的在前,一次一页;发表要登录 GitHub。 */
@@ -1457,7 +1560,7 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     const style = (id: string) => marketIndex.tags[id].style;
     const badgeRow = (on: boolean, mark: Parameters<typeof icon>[1], label: string, hint: string, count: number, onClick: () => void, cls = '') => {
       const toggle = ui.h('button', 'extension-tag is-badge extension-badge-toggle' + cls + (on ? ' is-active' : '')) as HTMLButtonElement; toggle.type = 'button';
-      toggle.append(icon(doc, mark), ui.h('span', '', label), helpMark(toggle, label, hint), ui.h('span', 'extension-tag-count', String(count)));
+      toggle.append(icon(doc, mark), sidebarName(toggle, label, hint), ui.h('span', 'extension-tag-count', String(count)));
       toggle.setAttribute('aria-pressed', String(on));
       toggle.addEventListener('click', () => { onClick(); state.page = 0; renderMarket(); save(); }, { signal });
       return toggle;
@@ -1490,6 +1593,9 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     }));
     warningControl?.classList.toggle('is-open', warningsHidden()); warningControl?.setAttribute('aria-pressed', String(warningsHidden()));
     tagBar.hidden = !tagBar.childElementCount;
+    // A row redrawn under the pointer (the one just clicked) gets no pointerenter until the pointer moves.
+    const under = tagPointer && doc.elementFromPoint(tagPointer.x, tagPointer.y)?.closest('.extension-tag');
+    if (under && tagBar.contains(under)) hints.get(under)?.show();
   }
   /**
    * Above the cards: the first line names what is selected, the second what is excluded and how many packages
@@ -1704,6 +1810,8 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
       feedback.classList.add('extension-operation-feedback'); feedback.setAttribute('role', 'status');
       const comments = box.querySelector<HTMLElement>('.extension-detail-side');
       const activeComment = comments?.contains(doc.activeElement) ? doc.activeElement as HTMLElement : null;
+      // Side by side, each column scrolls on its own; a repaint keeps where both were.
+      const scrolled = [box.querySelector('.extension-detail-main')?.scrollTop ?? 0, comments?.scrollTop ?? 0];
       const columns = ui.h('div', 'extension-detail-columns');
       const main = ui.h('div', 'extension-detail-main'); columns.append(main);
       box.replaceChildren(header, ...(links.hasChildNodes() ? [links] : []), feedback, columns);
@@ -1790,6 +1898,7 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
         if (!comments) side.append(commentsSection(listed?.name ?? data.name, listed?.rating));
         columns.append(side);
         activeComment?.focus({ preventScroll: true });
+        main.scrollTop = scrolled[0]!; side.scrollTop = scrolled[1]!;
       }
   }
   function detailLoadError(box: HTMLElement, text: string, unavailable = false) {
@@ -1937,6 +2046,8 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
     const registryPanel = ui.h('div', 'extension-registry'); registryPanel.id = 'extension-registry'; registryPanel.hidden = !registryOpen;
     registryPanel.append(registryBar, messageNodes.registry);
     tagBar = ui.h('div', 'extension-tagbar'); tagBar.hidden = true;
+    for (const type of ['pointermove', 'pointerdown'] as const) tagBar.addEventListener(type, event => { tagPointer = { x: event.clientX, y: event.clientY }; }, { signal });
+    tagBar.addEventListener('pointerleave', () => { tagPointer = undefined; }, { signal });
     activeBar = ui.h('div', 'extension-active-filters'); activeBar.hidden = true;
     marketGrid = ui.h('div', 'extension-grid'); marketPager = ui.rowbar();
     const manual = ui.sheet({ title: S.manual }); messageNodes.manual = ui.msgline(); messageNodes.manual.setAttribute('role', 'status');
@@ -2017,6 +2128,12 @@ function createExtensionContent({ doc, ui, lifecycle, capabilities }: ExtensionC
       warnings.append(icon(doc, 'warning')); warnings.setAttribute('aria-label', S.hideWarnings); attachHint(warnings, S.hideWarnings);
       warnings.addEventListener('click', toggleWarnings, { signal });
       filters.insertBefore(warnings, refresh);
+      // The search field is one group; the sort, the page size and the icon buttons another. A narrow toolbar
+      // moves the second group to its own line whole, and a narrower one moves the icon buttons together to a third.
+      const [searchField, sortPicker, sizeField, ...buttons] = [...filters.children] as HTMLElement[];
+      const queryGroup = ui.h('div', 'world-catalog-query'), actionGroup = ui.h('div', 'world-catalog-actions'), buttonGroup = ui.h('div', 'world-catalog-buttons');
+      queryGroup.append(searchField!); buttonGroup.append(...buttons); actionGroup.append(sortPicker!, sizeField!, buttonGroup);
+      filters.replaceChildren(queryGroup, actionGroup);
       const installation = ui.segmented([{ value: 'all', label: S.catalogCategories.all }, { value: 'installed', label: S.alreadyInstalled }, { value: 'available', label: S.notInstalled }], {
         value: state.installation, onSelect: value => { state.installation = value as CategoryState['installation']; state.page = 0; renderMarket(); save(); },
       });
